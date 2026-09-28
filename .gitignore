@@ -1,0 +1,23 @@
+# Java
+**/target/
+*.log
+
+# Node
+**/node_modules/
+**/dist/
+
+# Local configuration
+.env
+.env.local
+!.env.example
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Generated scaffolding and local data
+/work/
+/.data/
+/apps/control-plane/src/assets/

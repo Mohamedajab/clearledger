@@ -1,0 +1,15 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/clearledger
+    username: clearledger
+    password: clearledger
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8180/realms/clearledger
+
+clearledger:
+  outbox:
+    publisher:
+      enabled: false
