@@ -7,12 +7,12 @@ import com.clearledger.ledger.ledger.JournalEntryRepository;
 import com.clearledger.ledger.ledger.Posting;
 import com.clearledger.ledger.outbox.OutboxEvent;
 import com.clearledger.ledger.outbox.OutboxEventRepository;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.*;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class PaymentService {
@@ -94,7 +94,7 @@ public class PaymentService {
                 "paymentId", payment.getId(), "tenantId", payment.getTenantId(),
                 "amountMinor", payment.getAmountMinor(), "currency", payment.getCurrency(),
                 "occurredAt", payment.getCompletedAt().toString()));
-        } catch (JsonProcessingException error) {
+        } catch (JacksonException error) {
             throw new IllegalStateException("Could not serialize outbox event", error);
         }
     }

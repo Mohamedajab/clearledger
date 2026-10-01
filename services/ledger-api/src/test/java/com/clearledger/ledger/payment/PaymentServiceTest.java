@@ -7,12 +7,12 @@ import static org.mockito.Mockito.*;
 import com.clearledger.ledger.account.*;
 import com.clearledger.ledger.ledger.*;
 import com.clearledger.ledger.outbox.*;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.*;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
+import tools.jackson.databind.json.JsonMapper;
 
 @ExtendWith(MockitoExtension.class)
 class PaymentServiceTest {
@@ -29,7 +29,8 @@ class PaymentServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new PaymentService(accounts, payments, entries, outbox, new ObjectMapper().findAndRegisterModules());
+        service = new PaymentService(
+            accounts, payments, entries, outbox, JsonMapper.builder().findAndAddModules().build());
         source = new Account(sourceId, "northstar", "source", "Source", "GBP", Account.Type.WALLET);
         source.credit(10_000);
         destination = new Account(destinationId, "northstar", "destination", "Destination", "GBP", Account.Type.MERCHANT);
