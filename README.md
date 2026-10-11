@@ -54,6 +54,8 @@ The repository is a modular monolith by design. The ledger and payment consisten
 
 Prerequisite: Docker Desktop with Compose.
 
+For setup verification, local security boundaries and troubleshooting, see the [local development runbook](docs/local-development.md).
+
 ```bash
 cp .env.example .env
 docker compose up --build
