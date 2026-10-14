@@ -31,7 +31,7 @@ sequenceDiagram
     S->>P: lock accounts in stable order
     S->>P: update balances
     S->>P: insert payment + journal + postings + outbox
-    P->>P: deferred balanced-entry constraint
+    P->>P: balanced-entry trigger before POSTED update
     P-->>S: commit
     S-->>C: 201 Created
   end

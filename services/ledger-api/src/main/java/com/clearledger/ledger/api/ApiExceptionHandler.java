@@ -7,11 +7,17 @@ import jakarta.validation.ConstraintViolationException;
 import java.net.URI;
 import java.util.*;
 import org.springframework.http.*;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+    @ExceptionHandler(AccessDeniedException.class)
+    ResponseEntity<ProblemDetail> denied(AccessDeniedException error, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(problem(HttpStatus.FORBIDDEN, "Access denied", request));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     ResponseEntity<ProblemDetail> invalidBody(MethodArgumentNotValidException error, HttpServletRequest request) {
         ProblemDetail problem = problem(HttpStatus.BAD_REQUEST, "Request validation failed", request);

@@ -1,6 +1,6 @@
 # ClearLedger
 
-**A payment-orchestration and double-entry ledger platform built as a production system, not a dashboard mock-up.**
+**A full stack portfolio application for account transfers and double-entry journals.**
 
 ClearLedger accepts idempotent account transfers, locks balances safely, writes balanced immutable journal entries, and publishes payment events through a transactional outbox. A React operations console exposes the same API used by integrations. The repository includes observability, container orchestration, security boundaries, database migrations, architecture tests, and CI.
 
@@ -9,12 +9,13 @@ ClearLedger accepts idempotent account transfers, locks balances safely, writes 
 ## What makes it technically interesting
 
 - **Money is stored in minor units** (`long`/`BIGINT`), avoiding floating-point errors.
-- **Double-entry invariants exist twice:** in the Java aggregate and in a deferred PostgreSQL constraint trigger.
+- **Double-entry invariants exist twice:** in the Java aggregate and in a PostgreSQL trigger that checks postings before the journal changes to POSTED.
 - **Concurrent payments use deterministic pessimistic row locking** plus optimistic version columns, preventing overspend and lock-order deadlocks.
 - **Idempotency is tenant-scoped and payload-aware.** Replays return the original result; key reuse with a different payload fails.
 - **Payment, balance projection, journal and outbox event commit atomically** in one database transaction.
 - **Kafka publishing is at-least-once.** The outbox worker marks events only after broker acknowledgement, so consumers must deduplicate by event ID.
-- **Tenant identity crosses every repository query.** The HTTP tenant header is a demo transport; production should derive it from a verified JWT claim.
+- **Verified tenant identity:** issuer, expiry, API audience and `tenant_id` are validated. Tenant headers cannot select another organisation, and pending-event counts are tenant-scoped.
+- **Working React workflows:** real payment creation, stable retry keys, record search, journal CSV export, loading/error/empty states and read-only controls.
 - **Architecture rules are executable.** ArchUnit stops domain packages from depending on HTTP adapters.
 
 ## Stack
@@ -35,7 +36,7 @@ ClearLedger accepts idempotent account transfers, locks balances safely, writes 
 
 ```mermaid
 flowchart LR
-  Client[React control plane / API client] -->|JWT + tenant + idempotency key| API[Spring Boot API]
+  Client[React control plane / API client] -->|JWT + idempotency key| API[Spring Boot API]
   API --> Domain[Payment service + ledger domain]
   Domain -->|single ACID transaction| PG[(PostgreSQL)]
   PG --> Accounts[Balance projections]
@@ -70,7 +71,7 @@ docker compose up --build
 | Prometheus | http://localhost:9090 |
 | Grafana | http://localhost:3001 (admin / value from `.env`) |
 
-The Compose environment runs the API with the `dev` profile so the UI can be explored without an identity provider. The default profile requires OAuth2 JWTs and scopes. This separation is explicit in `SecurityConfig`.
+Compose includes a local Keycloak realm and uses the authenticated API in every profile. At http://localhost:3000, sign in as **operator** or **reader** with the local-only password `Local-demo-only-2026!`. The `other-tenant` account demonstrates an empty organisation without Northstar access. See [authentication](docs/authentication.md) for PKCE, token refresh, tenant claims and production configuration.
 
 ### Frontend-only portfolio demo
 
@@ -89,7 +90,7 @@ On PowerShell: `$env:VITE_DEMO_MODE='true'; npm run dev`.
 ```bash
 curl -X POST http://localhost:8080/api/v1/payments \
   -H 'Content-Type: application/json' \
-  -H 'X-Tenant-Id: northstar' \
+  -H 'Authorization: Bearer YOUR_ACCESS_TOKEN' \
   -H 'Idempotency-Key: order-88422' \
   -d '{
     "merchantReference":"ORD-88422",
@@ -126,6 +127,7 @@ cd services/ledger-api
 cd apps/control-plane
 npm ci
 npm run lint
+npm test
 npm run build
 ```
 
@@ -154,7 +156,7 @@ compose.yml                  Complete local platform
 - Where does exactly-once stop, and why must consumers remain idempotent?
 - Why combine pessimistic locks with an optimistic version column?
 - How would a reconciliation job prove projections match the journal?
-- How should tenant identity move from a header to an authenticated claim?
+- How are issuer, audience, permissions and tenant identity validated independently?
 
 ## Deliberate next steps
 

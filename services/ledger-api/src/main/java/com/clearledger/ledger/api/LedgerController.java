@@ -6,6 +6,9 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.web.bind.annotation.*;
+import com.clearledger.ledger.config.TenantIdentity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 
 @RestController
 @RequestMapping("/api/v1/ledger")
@@ -14,8 +17,9 @@ public class LedgerController {
     public LedgerController(JournalEntryRepository entries) { this.entries = entries; }
 
     @GetMapping("/entries")
-    public List<EntryView> entries(@RequestHeader("X-Tenant-Id") String tenantId,
+    public List<EntryView> entries(@AuthenticationPrincipal Jwt jwt,
                                    @RequestParam(defaultValue = "50") int limit) {
+        String tenantId = TenantIdentity.require(jwt);
         return entries.findByTenantIdOrderByOccurredAtDesc(tenantId, PageRequest.of(0, Math.min(Math.max(limit, 1), 100)))
             .stream().map(EntryView::from).toList();
     }

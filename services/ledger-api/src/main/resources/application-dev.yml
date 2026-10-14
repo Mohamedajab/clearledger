@@ -7,7 +7,7 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://localhost:8180/realms/clearledger
+          issuer-uri: ${OIDC_ISSUER_URI:http://localhost:3000/auth/realms/clearledger}
 
 clearledger:
   outbox:

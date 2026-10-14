@@ -39,7 +39,8 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: ${OIDC_ISSUER_URI:http://localhost:8180/realms/clearledger}
+          issuer-uri: ${OIDC_ISSUER_URI:http://localhost:3000/auth/realms/clearledger}
+          jwk-set-uri: ${OIDC_JWK_SET_URI:http://localhost:8180/auth/realms/clearledger/protocol/openid-connect/certs}
 
 server:
   port: ${PORT:8080}
@@ -71,6 +72,7 @@ clearledger:
       enabled: ${OUTBOX_PUBLISHER_ENABLED:true}
       batch-size: 100
   security:
+    audience: ${OIDC_AUDIENCE:clearledger-api}
     allowed-origins: ${ALLOWED_ORIGINS:http://localhost:5173}
 
 logging:

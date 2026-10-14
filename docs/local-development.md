@@ -1,10 +1,9 @@
 # Local development and operations runbook
 
 This guide covers the **local portfolio environment** in `compose.yml`. It is
-not a production deployment guide. The Compose API starts with the `dev`
-Spring profile, demo credentials and an unauthenticated local development
-boundary. Do not expose these services directly to the internet or use real
-payment/account data.
+not a production deployment guide. Compose includes a local Keycloak realm,
+and the API requires JWT authentication in every profile. Use only sample
+payment/account data. See [authentication](authentication.md) for local accounts.
 
 For the design rationale, see [architecture](architecture.md), the
 [ledger consistency ADR](adr/001-ledger-consistency.md) and the
@@ -68,7 +67,7 @@ PowerShell users can open the readiness URL in a browser or run
 
 Use the example JSON payload in the [main README](../README.md#api-example)
 once the demo accounts are present. That example supplies
-`X-Tenant-Id`, `Idempotency-Key` and an amount in **minor currency units**.
+`Authorization: Bearer YOUR_ACCESS_TOKEN`, `Idempotency-Key` and an amount in **minor currency units**. Tenant identity comes from the token.
 
 1. Send a valid payment request with a new idempotency key and note the
    returned payment identifier.
@@ -88,24 +87,23 @@ Account UUIDs in examples are demonstration fixtures, not credentials.
 If the local database has been reset, replaced or manually edited, confirm
 that those accounts exist and have compatible currency/funds before testing.
 
-## Two security modes that must not be confused
+## Authenticated local environment
 
-**Compose/demo path:** `SPRING_PROFILES_ACTIVE=dev` is configured in
-`compose.yml`. It allows local UI exploration without provisioning an OIDC
-identity provider and starts the outbox worker using
-`OUTBOX_PUBLISHER_ENABLED=true`.
-
-**Default application path:** the application config declares OAuth2
-resource-server JWT verification and read/write scopes. Running the app
-outside the Compose `dev` setup is **not** proof of production readiness;
-a real identity provider, tenant-claim binding, key management and deployment
-hardening remain separate tasks.
+The API uses the same JWT validation and permission checks in all profiles.
+Compose imports a Keycloak fixture with operator, reader and other-tenant
+accounts. Sign in at the UI with the local-only password from the README.
+The fixture is for local testing; a remote deployment needs an HTTPS provider,
+administrator-managed tenant attributes and production secrets.
 
 `services/ledger-api/src/main/resources/application-dev.yml` disables the
 outbox publisher by default when that profile is launched independently.
 The Compose environment overrides the publisher flag to `true`. Therefore
 the standalone Maven command and the full Compose stack do **not** have
 identical outbox behaviour.
+
+Private Actuator metrics require authentication too. The existing Prometheus
+example needs a configured read credential for scraping; it does not bypass API
+security. Health/readiness endpoints remain public and minimal.
 
 ## Frontend-only demo (no API or database)
 

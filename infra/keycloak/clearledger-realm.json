@@ -1,0 +1,145 @@
+{
+  "realm": "clearledger",
+  "enabled": true,
+  "displayName": "ClearLedger local demo",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "sslRequired": "none",
+  "roles": {
+    "realm": [
+      {
+        "name": "ledger:read"
+      },
+      {
+        "name": "ledger:write"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "clearledger-web",
+      "name": "ClearLedger",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "http://localhost:5173/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000",
+        "http://localhost:5173"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:3000/*##http://localhost:5173/*"
+      },
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "profile",
+        "roles"
+      ],
+      "protocolMappers": [
+        {
+          "name": "api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "clearledger-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        },
+        {
+          "name": "tenant",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "tenant_id",
+            "claim.name": "tenant_id",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "operator",
+      "email": "operator@example.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Demo",
+      "lastName": "Operator",
+      "attributes": {
+        "tenant_id": [
+          "northstar"
+        ]
+      },
+      "realmRoles": [
+        "ledger:read",
+        "ledger:write"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Local-demo-only-2026!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "reader",
+      "email": "reader@example.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Demo",
+      "lastName": "Reader",
+      "attributes": {
+        "tenant_id": [
+          "northstar"
+        ]
+      },
+      "realmRoles": [
+        "ledger:read"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Local-demo-only-2026!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "other-tenant",
+      "email": "other@example.com",
+      "emailVerified": true,
+      "firstName": "Other",
+      "lastName": "Operator",
+      "enabled": true,
+      "attributes": {
+        "tenant_id": [
+          "other"
+        ]
+      },
+      "realmRoles": [
+        "ledger:read",
+        "ledger:write"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Local-demo-only-2026!",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

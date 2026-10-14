@@ -38,6 +38,7 @@ jobs:
           cache-dependency-path: apps/control-plane/package-lock.json
       - run: npm ci
       - run: npm run lint
+      - run: npm test
       - run: npm run build
 
   containers:
@@ -49,3 +50,34 @@ jobs:
         run: docker compose config --quiet
       - name: Build production images
         run: docker compose build api ui
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/control-plane/package-lock.json
+      - name: Start authenticated local fixture
+        run: docker compose up -d --wait --wait-timeout 180 postgres redis redpanda keycloak api ui
+      - name: Wait for identity provider
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/auth/realms/clearledger/.well-known/openid-configuration > /dev/null; then exit 0; fi
+            sleep 2
+          done
+          exit 1
+      - name: Verify browser payment and access workflows
+        working-directory: apps/control-plane
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-verification
+          path: apps/control-plane/test-results/
+      - name: Fixture logs
+        if: failure()
+        run: docker compose logs --tail=100
+      - name: Stop fixture
+        if: always()
+        run: docker compose down
