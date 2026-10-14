@@ -6,6 +6,9 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.web.bind.annotation.*;
+import com.clearledger.ledger.config.TenantIdentity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 
 @RestController
 @RequestMapping("/api/v1/accounts")
@@ -14,7 +17,8 @@ public class AccountController {
     public AccountController(AccountRepository accounts) { this.accounts = accounts; }
 
     @GetMapping
-    public List<AccountView> list(@RequestHeader("X-Tenant-Id") String tenantId) {
+    public List<AccountView> list(@AuthenticationPrincipal Jwt jwt) {
+        String tenantId = TenantIdentity.require(jwt);
         return accounts.findAllByTenantIdOrderByCreatedAtAsc(tenantId).stream().map(AccountView::from).toList();
     }
 

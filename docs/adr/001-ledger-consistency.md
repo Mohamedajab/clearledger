@@ -5,7 +5,7 @@
 
 ## Decision
 
-Use a modular monolith and one PostgreSQL transaction for the payment record, account projections, balanced journal and outbox event. Enforce balanced entries both in the domain and through a deferred database trigger.
+Use a modular monolith and one PostgreSQL transaction for the payment record, account projections, balanced journal and outbox event. Enforce balanced entries both in the domain and through a database trigger before changing the journal to POSTED. Flush the draft and postings first, then post the managed journal entity within the same transaction.
 
 ## Why
 

@@ -7,6 +7,9 @@ import com.clearledger.ledger.payment.PaymentIntent;
 import com.clearledger.ledger.payment.PaymentIntentRepository;
 import java.time.Instant;
 import org.springframework.web.bind.annotation.*;
+import com.clearledger.ledger.config.TenantIdentity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 
 @RestController
 @RequestMapping("/api/v1/dashboard")
@@ -20,13 +23,14 @@ public class DashboardController {
     }
 
     @GetMapping
-    public DashboardView summary(@RequestHeader("X-Tenant-Id") String tenantId) {
+    public DashboardView summary(@AuthenticationPrincipal Jwt jwt) {
+        String tenantId = TenantIdentity.require(jwt);
         var tenantAccounts = accounts.findAllByTenantIdOrderByCreatedAtAsc(tenantId);
         return new DashboardView(
             tenantAccounts.stream().mapToLong(account -> account.getBalanceMinor()).sum(),
             payments.completedVolume(tenantId),
             payments.countByTenantIdAndStatus(tenantId, PaymentIntent.Status.COMPLETED),
-            events.countByStatus(OutboxEvent.Status.PENDING),
+            events.countForTenant(tenantId, OutboxEvent.Status.PENDING),
             tenantAccounts.size(),
             Instant.now());
     }

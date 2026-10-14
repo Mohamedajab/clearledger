@@ -65,7 +65,10 @@ public class PaymentService {
             "PAY-" + paymentId, command.description() == null || command.description().isBlank() ? "Account transfer" : command.description());
         entry.addPosting(source.getId(), Posting.Direction.DEBIT, command.amountMinor(), currency);
         entry.addPosting(destination.getId(), Posting.Direction.CREDIT, command.amountMinor(), currency);
-        entries.save(entry);
+        entry = entries.save(entry);
+        // Assigned UUIDs can cause save() to merge and return a different managed object.
+        // Insert the draft and postings before the PostgreSQL posting trigger checks them.
+        entries.flush();
         entry.post();
         entries.flush();
 

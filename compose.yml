@@ -1,6 +1,17 @@
 name: clearledger
 
 services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.4.7
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_HOSTNAME: http://localhost:3000/auth
+      KC_HTTP_RELATIVE_PATH: /auth
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ./infra/keycloak/clearledger-realm.json:/opt/keycloak/data/import/clearledger-realm.json:ro
+    ports: ["127.0.0.1:8180:8080"]
+
   postgres:
     image: postgres:17-alpine
     environment:
@@ -58,7 +69,9 @@ services:
     build:
       context: ./services/ledger-api
     environment:
-      SPRING_PROFILES_ACTIVE: dev
+      OIDC_ISSUER_URI: http://localhost:3000/auth/realms/clearledger
+      OIDC_JWK_SET_URI: http://keycloak:8080/auth/realms/clearledger/protocol/openid-connect/certs
+      OIDC_AUDIENCE: clearledger-api
       DATABASE_URL: jdbc:postgresql://postgres:5432/clearledger
       DATABASE_USER: ${POSTGRES_USER:-clearledger}
       DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-clearledger}
@@ -66,11 +79,12 @@ services:
       REDIS_HOST: redis
       OUTBOX_PUBLISHER_ENABLED: "true"
       ALLOWED_ORIGINS: http://localhost:3000,http://localhost:5173
-    ports: ["8080:8080"]
+    ports: ["127.0.0.1:8080:8080"]
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
       redpanda: { condition: service_healthy }
+      keycloak: { condition: service_started }
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health/readiness"]
       interval: 10s

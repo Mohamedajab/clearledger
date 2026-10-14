@@ -55,7 +55,7 @@ class PaymentServiceTest {
         verify(entries).save(journal.capture());
         assertThat(journal.getValue().getStatus()).isEqualTo(JournalEntry.Status.POSTED);
         assertThat(journal.getValue().getPostings()).extracting(Posting::getAmountMinor).containsExactly(2_500L, 2_500L);
-        verify(entries).flush();
+        verify(entries, times(2)).flush();
         verify(outbox).save(any(OutboxEvent.class));
     }
 
@@ -65,5 +65,15 @@ class PaymentServiceTest {
             new CreatePaymentCommand("ORDER-101", sourceId, destinationId, 500, "USD", "Wrong currency")))
             .isInstanceOf(IllegalArgumentException.class);
         verify(payments, never()).save(any());
+    }
+
+    @Test
+    void postsTheManagedCopyReturnedByRepositoryMerge() {
+        JournalEntry managed = new JournalEntry(UUID.randomUUID(), "northstar", UUID.randomUUID(), "MERGED", "Test");
+        managed.addPosting(sourceId, Posting.Direction.DEBIT, 500, "GBP");
+        managed.addPosting(destinationId, Posting.Direction.CREDIT, 500, "GBP");
+        when(entries.save(any())).thenReturn(managed);
+        service.create("northstar", "key-1", new CreatePaymentCommand("ORDER-MERGE", sourceId, destinationId, 500, "GBP", "Test"));
+        assertThat(managed.getStatus()).isEqualTo(JournalEntry.Status.POSTED);
     }
 }

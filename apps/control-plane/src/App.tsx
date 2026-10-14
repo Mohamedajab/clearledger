@@ -1,69 +1,225 @@
-import { useState } from "react";
-import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
-import { NavLink,Navigate,Route,Routes,useLocation } from "react-router-dom";
-import { Activity,ArrowDownLeft,ArrowUpRight,BookOpen,Boxes,Braces,Building2,Check,ChevronDown,CircleHelp,Command,Copy,CreditCard,Database,ExternalLink,FileClock,Gauge,KeyRound,Landmark,Menu,Plus,Search,ServerCog,Settings,ShieldCheck,WalletCards,X,Zap } from "lucide-react";
-import { api,type CreatePayment,type LedgerEntry,type Payment,DEMO_MODE } from "./api";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
+import type { FormEvent, ReactNode } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Activity, ArrowUpRight, BookOpen, Check, CircleHelp, Copy, CreditCard, Database, Download, ExternalLink, Gauge, Landmark, LogOut, Menu, Search, ShieldCheck, WalletCards, X } from "lucide-react";
+import { api, API_URL, type CreatePayment, type LedgerEntry, type Payment } from "./api";
+import { DEMO_MODE, identity, initializeAuth, signIn, signOut } from "./auth";
+import { downloadCsv, minorUnits } from "./format";
 import "./App.css";
+import "./workspace.css";
 
-const money=(n:number,c="GBP")=>new Intl.NumberFormat("en-GB",{style:"currency",currency:c}).format(n/100);
-const date=(v:string)=>new Intl.DateTimeFormat("en-GB",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}).format(new Date(v));
-const short=(id:string)=>id.slice(0,8).toUpperCase();
-const nav=[["/overview","Overview",Gauge],["/payments","Payments",CreditCard],["/accounts","Accounts",WalletCards],["/ledger","Ledger",BookOpen],["/developers","Developers",Braces]] as const;
+const money = (n: number, currency = "GBP") => new Intl.NumberFormat("en-GB", { style: "currency", currency }).format(n / 100);
+const date = (value: string) => new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+const short = (id: string) => id.slice(0, 8).toUpperCase();
+const nav = [["/overview", "Overview", Gauge], ["/payments", "Payments", CreditCard], ["/accounts", "Accounts", WalletCards], ["/ledger", "Ledger", BookOpen], ["/developers", "Developers", Database]] as const;
+const SearchContext = createContext("");
+const matches = (term: string, ...values: string[]) => values.join(" ").toLowerCase().includes(term.toLowerCase());
+const useAccounts = () => useQuery({ queryKey: ["accounts"], queryFn: () => api.accounts() });
+const usePayments = () => useQuery({ queryKey: ["payments"], queryFn: () => api.payments() });
+const useLedger = () => useQuery({ queryKey: ["ledger"], queryFn: () => api.ledger() });
 
-export default function App(){
- const [mobile,setMobile]=useState(false);
- return <div className="app"><aside className={mobile?"sidebar open":"sidebar"}><div className="brand"><i><Landmark/></i><div><strong>ClearLedger</strong><small>Payments infrastructure</small></div><button onClick={()=>setMobile(false)}><X/></button></div><div className="workspace"><span>Workspace</span><button><b>N</b><div><strong>Northstar Commerce</strong><small>Production</small></div><ChevronDown/></button></div><nav>{nav.map(([to,label,Icon])=><NavLink key={to} to={to} onClick={()=>setMobile(false)}><Icon/><span>{label}</span>{label==="Payments"&&<em>live</em>}</NavLink>)}</nav><div className="sidebar-spacer"/><div className="rail-status"><p><i/> Systems operational</p><span>API p95 <b>84 ms</b></span><span>Event lag <b>0</b></span></div><nav className="secondary"><a href="http://localhost:8080/docs"><CircleHelp/>API documentation<ExternalLink/></a><a href="#settings"><Settings/>Settings</a></nav><div className="user"><b>AM</b><div><strong>Alex Morgan</strong><small>Platform engineer</small></div></div></aside><main><Topbar onMenu={()=>setMobile(true)}/><Routes><Route path="/overview" element={<Overview/>}/><Route path="/payments" element={<Payments/>}/><Route path="/accounts" element={<Accounts/>}/><Route path="/ledger" element={<Ledger/>}/><Route path="/developers" element={<Developers/>}/><Route path="*" element={<Navigate to="/overview" replace/>}/></Routes></main></div>
+export default function App() {
+  const client = useQueryClient();
+  const [status, setStatus] = useState<"loading" | "signed-in" | "signed-out" | "failed">("loading");
+  const [authError, setAuthError] = useState("");
+  const [mobile, setMobile] = useState(false);
+  const [search, setSearch] = useState("");
+  useEffect(() => {
+    let active = true;
+    initializeAuth().then(authenticated => { if (active) setStatus(authenticated ? "signed-in" : "signed-out"); })
+      .catch(() => { if (active) { setAuthError("Could not connect to the sign-in service."); setStatus("failed"); } });
+    const expired = () => { client.clear(); setSearch(""); setStatus("signed-out"); };
+    window.addEventListener("clearledger:session-expired", expired);
+    return () => { active = false; window.removeEventListener("clearledger:session-expired", expired); };
+  }, [client]);
+  if (status !== "signed-in") return <main className="auth-layout">
+    <Landmark size={36}/><p className="eyebrow">CLEARLEDGER</p><h1>Your payments workspace.</h1>
+    {status === "loading" ? <p role="status">Connecting securely…</p> : <>
+      <p>{authError || "Sign in to access your organisation's accounts and journal."}</p>
+      {status === "failed" ? <button className="primary" onClick={() => window.location.reload()}>Retry connection</button>
+        : <button className="primary" onClick={() => void signIn().catch(() => setAuthError("Sign-in could not start. Please try again."))}>Sign in</button>}
+      <p className="muted">For the local demo, use operator or reader with the password documented in the setup guide.</p>
+    </>}
+  </main>;
+  const user = identity();
+  const logout = async () => {
+    client.clear();
+    setStatus("signed-out");
+    try { await signOut(); } catch { setAuthError("Sign-out could not finish. Close this tab or retry sign-in."); }
+  };
+  return <SearchContext.Provider value={search}><div className="app">
+    <aside className={mobile ? "sidebar open" : "sidebar"}>
+      <div className="brand"><i><Landmark/></i><div><strong>ClearLedger</strong><small>Payments workspace</small></div><button aria-label="Close navigation" onClick={() => setMobile(false)}><X/></button></div>
+      <div className="workspace"><span>YOUR ORGANISATION</span><div className="workspace-identity"><strong>{user.tenant}</strong><small>{DEMO_MODE ? "Browser demo" : user.canWrite ? "Operator access" : "Read-only access"}</small></div></div>
+      <nav aria-label="Main navigation">{nav.map(([to, label, Icon]) => <NavLink key={to} to={to} onClick={() => setMobile(false)}><Icon/><span>{label}</span></NavLink>)}</nav>
+      <div className="sidebar-spacer"/>
+      <div className="rail-status"><p>{DEMO_MODE ? "Sample data · resets on refresh" : "Authenticated API connection"}</p></div>
+      <nav className="secondary"><a href={DEMO_MODE ? "https://github.com/Mohamedajab/clearledger" : API_URL + "/docs"} target="_blank" rel="noreferrer"><CircleHelp/>{DEMO_MODE ? "Source and API guide" : "API documentation"}<ExternalLink/></a></nav>
+      <div className="user"><b>{user.username.slice(0, 2).toUpperCase()}</b><div><strong>{user.username}</strong><small>{user.canWrite ? "Operator" : "Reader"}</small></div>{!DEMO_MODE && <button className="logout-button" aria-label="Sign out" onClick={() => void logout()}><LogOut size={16}/></button>}</div>
+    </aside>
+    <main><Topbar search={search} setSearch={setSearch} onMenu={() => setMobile(true)}/>
+      {DEMO_MODE && <div className="demo-banner"><ShieldCheck/>Interactive browser demo with sample data. No server payments are made.</div>}
+      <Routes>
+        <Route path="/overview" element={<Overview/>}/><Route path="/payments" element={<Payments/>}/>
+        <Route path="/accounts" element={<Accounts/>}/><Route path="/ledger" element={<Ledger/>}/>
+        <Route path="/developers" element={<Developers/>}/><Route path="*" element={<Navigate to="/overview" replace/>}/>
+      </Routes>
+    </main>
+  </div></SearchContext.Provider>;
 }
-function Topbar({onMenu}:{onMenu:()=>void}){const location=useLocation(),title=nav.find(([to])=>to===location.pathname)?.[1]??"Overview";return <header className="topbar"><button className="menu" onClick={onMenu}><Menu/></button><div><small>Northstar Commerce</small><strong>{title}</strong></div><label className="search"><Search/><input placeholder="Search payments, accounts, references…"/><kbd><Command/> K</kbd></label><button className="help"><CircleHelp/></button><span className="env"><i/> Live</span><button className="avatar">AM</button></header>}
-function Page({eyebrow,title,copy,action,children}:{eyebrow:string;title:string;copy:string;action?:React.ReactNode;children:React.ReactNode}){return <div className="page"><header className="pagehead"><div><p>{eyebrow}</p><h1>{title}</h1><span>{copy}</span></div>{action}</header>{DEMO_MODE&&<div className="demo-banner"><Zap/> Demo adapter active. Set <code>VITE_DEMO_MODE=false</code> to use the Spring API.<button>Architecture <ArrowUpRight/></button></div>}{children}</div>}
-function PanelTitle({eyebrow,title,action}:{eyebrow:string;title:string;action?:React.ReactNode}){return <header className="paneltitle"><div><p>{eyebrow}</p><h2>{title}</h2></div>{action}</header>}
-
-function Overview(){
- const dashboard=useQuery({queryKey:["dashboard"],queryFn:()=>api.dashboard()}),payments=useQuery({queryKey:["payments"],queryFn:()=>api.payments()}),d=dashboard.data;
- return <Page eyebrow="Monday, 28 September · 18:57 UTC" title="Money movement, under control." copy="One operational view of balances, payments, and ledger integrity." action={<NavLink to="/payments" className="primary"><Plus/>Create payment</NavLink>}><section className="metrics"><Metric icon={Landmark} label="Platform balance" value={money(d?.totalBalanceMinor??246816900)} sub="Across 4 GBP accounts" change="+4.8%"/><Metric icon={ArrowUpRight} label="Processed volume" value={money(d?.processedVolumeMinor??128472900)} sub="Rolling 30 days" change="+12.4%"/><Metric icon={Check} label="Completed payments" value={(d?.completedPayments??1842).toLocaleString()} sub="99.94% success rate" change="+8.2%"/><Metric icon={FileClock} label="Pending outbox events" value={String(d?.pendingEvents??0)} sub="Kafka delivery backlog" change="Healthy"/></section><section className="overview-grid"><article className="panel volume"><PanelTitle eyebrow="Processing volume" title="£1.28m moved this month" action={<select><option>Last 14 days</option><option>Last 30 days</option></select>}/><div className="chart"><div className="axis"><span>£160k</span><span>£120k</span><span>£80k</span><span>£40k</span><span>£0</span></div><div className="columns">{[64,76,58,91,84,113,96,127,109,142,125,151,136,159].map((v,i)=><i key={i} style={{height:`${v/1.7}px`}} className={i>11?"hot":""}><b>{i===13?"£159k":""}</b></i>)}</div><div className="days"><span>15 Sep</span><span>18 Sep</span><span>21 Sep</span><span>24 Sep</span><span>28 Sep</span></div></div><footer><span><i/> Card payments</span><span><i/> Settlements</span><b>+12.4% vs previous period</b></footer></article><article className="panel integrity"><PanelTitle eyebrow="Ledger controls" title="Integrity monitor"/><div className="integrity-score"><i><ShieldCheck/><b>100%</b></i><div><strong>All controls passing</strong><span>Last verified 12 seconds ago</span></div></div><ul><li><Check/><span>Debits equal credits</span><b>Passing</b></li><li><Check/><span>No orphan postings</span><b>Passing</b></li><li><Check/><span>Sequence continuity</span><b>Passing</b></li><li><Check/><span>Outbox delivery</span><b>Passing</b></li></ul><button>View control evidence <ArrowUpRight/></button></article></section><RecentPayments items={payments.data??[]}/></Page>
+function Topbar({ search, setSearch, onMenu }: { search: string; setSearch: (value: string) => void; onMenu: () => void }) {
+  const location = useLocation();
+  return <header className="topbar"><button className="menu" aria-label="Open navigation" onClick={onMenu}><Menu/></button>
+    <div><small>{identity().tenant}</small><strong>{nav.find(([to]) => to === location.pathname)?.[1] ?? "Overview"}</strong></div>
+    <label className="search"><Search/><input aria-label="Search records" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search references, accounts or entries…"/>{search && <button aria-label="Clear search" onClick={() => setSearch("")}><X size={14}/></button>}</label>
+    <span className="env">{DEMO_MODE ? "Demo" : identity().canWrite ? "Operator" : "Read only"}</span>
+  </header>;
 }
-function Metric({icon:Icon,label,value,sub,change}:{icon:typeof Landmark;label:string;value:string;sub:string;change:string}){return <article className="metric"><header><i><Icon/></i><span>{label}</span></header><strong>{value}</strong><footer><span>{sub}</span><b>{change}</b></footer></article>}
-function RecentPayments({items}:{items:Payment[]}){
- const accounts=useQuery({queryKey:["accounts"],queryFn:()=>api.accounts()}).data??[],names=Object.fromEntries(accounts.map(a=>[a.id,a.name]));
- return <article className="panel tablepanel"><PanelTitle eyebrow="Live stream" title="Recent payments" action={<NavLink to="/payments">View all <ArrowUpRight/></NavLink>}/><div className="table"><div className="tr th"><span>Payment</span><span>Route</span><span>Amount</span><span>Status</span><span>Created</span></div>{items.slice(0,8).map(p=><div className="tr" key={p.id}><span><i className="payment-icon"><ArrowUpRight/></i><b>{p.merchantReference}<small>PAY_{short(p.id)}</small></b></span><span>{names[p.sourceAccountId]??"Operating wallet"}<small>→ {names[p.destinationAccountId]??"Merchant"}</small></span><strong>{money(p.amountMinor,p.currency)}</strong><em><Check/> {p.status.toLowerCase()}</em><time>{date(p.createdAt)}</time></div>)}</div></article>
+function Page({ title, eyebrow, copy, action, children }: { title: string; eyebrow: string; copy: string; action?: ReactNode; children: ReactNode }) {
+  return <div className="page"><header className="pagehead"><div><p>{eyebrow}</p><h1>{title}</h1><span>{copy}</span></div>{action}</header>{children}</div>;
 }
-
-function Payments(){
- const query=useQuery({queryKey:["payments"],queryFn:()=>api.payments()}),[open,setOpen]=useState(false);
- return <Page eyebrow="Payment orchestration" title="Payments" copy="Idempotent transfers posted atomically to the double-entry ledger." action={<button className="primary" onClick={()=>setOpen(true)}><Plus/>Create payment</button>}><section className="filterbar"><div><button className="active">All</button><button>Completed</button><button>Processing</button><button>Failed</button></div><label><Search/><input placeholder="Reference or payment ID"/></label><button><FileClock/>Export CSV</button></section><RecentPayments items={query.data??[]}/>{open&&<PaymentDialog close={()=>setOpen(false)}/>}</Page>
+function QueryState({ query, label }: { query: { isPending: boolean; error: Error | null; refetch: () => unknown }; label: string }) {
+  if (query.isPending) return <div className="empty-state" role="status">Loading {label}…</div>;
+  if (query.error) return <div className="empty-state error" role="alert"><p>{query.error.message}</p><button onClick={() => void query.refetch()}>Retry {label}</button></div>;
+  return null;
 }
-function PaymentDialog({close}:{close:()=>void}){
- const qc=useQueryClient(),accounts=useQuery({queryKey:["accounts"],queryFn:()=>api.accounts()}).data??[];
- const [source,setSource]=useState("11111111-1111-1111-1111-111111111111"),[destination,setDestination]=useState("33333333-3333-3333-3333-333333333333"),[amount,setAmount]=useState("1250.00"),[reference,setReference]=useState(()=>`ORD-${Date.now().toString().slice(-5)}`);
- const mutation=useMutation({mutationFn:(input:CreatePayment)=>api.createPayment(input),onSuccess:async()=>{await qc.invalidateQueries({queryKey:["payments"]});await qc.invalidateQueries({queryKey:["dashboard"]});close()}});
- const submit=(e:React.FormEvent)=>{e.preventDefault();mutation.mutate({merchantReference:reference,sourceAccountId:source,destinationAccountId:destination,amountMinor:Math.round(Number(amount)*100),currency:"GBP",description:"Merchant order settlement"})};
- return <div className="modal" onMouseDown={e=>e.target===e.currentTarget&&close()}><form className="dialog" onSubmit={submit}><header><div><p>New transfer</p><h2>Create payment</h2><span>Funds and ledger postings commit in one transaction.</span></div><button type="button" onClick={close}><X/></button></header><label>Merchant reference<input value={reference} onChange={e=>setReference(e.target.value)} required/></label><div className="twocol"><label>Source account<select value={source} onChange={e=>setSource(e.target.value)}>{accounts.map(a=><option key={a.id} value={a.id}>{a.name} · {money(a.balanceMinor)}</option>)}</select></label><label>Destination account<select value={destination} onChange={e=>setDestination(e.target.value)}>{accounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label></div><label>Amount<div className="amount"><span>GBP</span><input type="number" min=".01" step=".01" value={amount} onChange={e=>setAmount(e.target.value)}/></div></label><aside><ShieldCheck/><span><strong>Protected by ledger controls</strong>Idempotency, row locks, balanced postings and an outbox event.</span></aside>{mutation.error&&<p className="error">{mutation.error.message}</p>}<footer><button type="button" onClick={close}>Cancel</button><button className="primary" disabled={mutation.isPending}>{mutation.isPending?"Posting…":"Create payment"}<ArrowUpRight/></button></footer></form></div>
+function Empty({ children }: { children: ReactNode }) { return <p className="empty-state" role="status">{children}</p>; }
+function Overview() {
+  const dashboard = useQuery({ queryKey: ["dashboard"], queryFn: () => api.dashboard() });
+  const payments = usePayments();
+  const accounts = useAccounts();
+  const ledger = useLedger();
+  const data = dashboard.data;
+  const canWrite = identity().canWrite;
+  return <Page eyebrow="Payments and treasury" title="Overview" copy="Balances and activity from your organisation's ledger." action={<NavLink className="primary" to="/payments">{canWrite ? "Create payment" : "View payments"}<ArrowUpRight/></NavLink>}>
+    <QueryState query={dashboard} label="summary"/>
+    {data && <section className="metrics">
+      <Metric label="Total balance" value={accounts.data && new Set(accounts.data.map(a => a.currency)).size > 1 ? "Multiple currencies" : money(data.totalBalanceMinor, accounts.data?.[0]?.currency ?? "GBP")} sub="Current account projections"/>
+      <Metric label="Processed volume" value={money(data.processedVolumeMinor)} sub="All completed GBP transfers"/>
+      <Metric label="Completed payments" value={String(data.completedPayments)} sub="All-time count"/>
+      <Metric label="Pending events" value={String(data.pendingEvents)} sub="Your organisation's outbox"/>
+    </section>}
+    {data && <p className="muted">Summary updated {date(data.asOf)}. Payment and journal lists show up to the latest 100 records.</p>}
+    <QueryState query={accounts} label="accounts"/><QueryState query={ledger} label="journal"/>
+    {ledger.data && <article className="panel integrity"><h2>Loaded journal entries</h2><p>{ledger.data.length} entries · {ledger.data.reduce((sum, entry) => sum + entry.postings.length, 0)} postings</p><p>{ledger.data.every(entry => entry.postings.reduce((balance, posting) => balance + (posting.direction === "DEBIT" ? posting.amountMinor : -posting.amountMinor), 0) === 0) ? "All loaded entries are balanced." : "An unbalanced entry needs investigation."}</p><NavLink to="/ledger">Inspect the journal →</NavLink></article>}
+    <QueryState query={payments} label="payments"/>
+    {payments.data && <PaymentTable items={payments.data.slice(0, 8)} accounts={accounts.data ?? []}/>}
+  </Page>;
 }
-
-function Accounts(){
- const query=useQuery({queryKey:["accounts"],queryFn:()=>api.accounts()});
- return <Page eyebrow="Treasury and merchants" title="Accounts" copy="Versioned balance projections backed by immutable ledger postings." action={<button className="primary"><Plus/>Open account</button>}><section className="account-grid">{(query.data??[]).map((a,i)=><article className="account" key={a.id}><header><i className={i<2?"wallet":"merchant"}>{i<2?<Landmark/>:<Building2/>}</i><em><span/> {a.status.toLowerCase()}</em></header><p>{a.type}</p><h2>{a.name}</h2><strong>{money(a.balanceMinor,a.currency)}</strong><footer><span>{a.externalRef}</span><b>v{a.version}</b></footer></article>)}</section><article className="panel account-info"><div><Database/><span><strong>Balance projection model</strong>Balances update inside the same PostgreSQL transaction as postings. The immutable journal remains the source of truth.</span></div><button>Read architecture decision <ArrowUpRight/></button></article></Page>
+function Metric({ label, value, sub }: { label: string; value: string; sub: string }) { return <article className="metric"><header><i><Activity/></i><span>{label}</span></header><strong>{value}</strong><footer><span>{sub}</span></footer></article>; }
+function PaymentTable({ items, accounts }: { items: Payment[]; accounts: { id: string; name: string }[] }) {
+  const search = useContext(SearchContext);
+  const names = Object.fromEntries(accounts.map(account => [account.id, account.name]));
+  const filtered = items.filter(payment => matches(search, payment.merchantReference, payment.id, names[payment.sourceAccountId] ?? "", names[payment.destinationAccountId] ?? ""));
+  return <article className="panel tablepanel"><h2>Payments</h2><p className="muted" role="status">{filtered.length} shown</p>
+    {filtered.length === 0 ? <Empty>{search ? "No payments match your search." : "No payments yet."}</Empty> : <div className="table" role="table" aria-label="Payments">
+      <div className="tr th" role="row"><span role="columnheader">Reference</span><span role="columnheader">Route</span><span role="columnheader">Amount</span><span role="columnheader">Status</span><span role="columnheader">Created</span></div>
+      {filtered.map(payment => <div className="tr" role="row" key={payment.id}>
+        <span role="cell"><b>{payment.merchantReference}<small>PAY_{short(payment.id)}</small></b></span>
+        <span role="cell">{names[payment.sourceAccountId] ?? short(payment.sourceAccountId)}<small>→ {names[payment.destinationAccountId] ?? short(payment.destinationAccountId)}</small></span>
+        <strong role="cell">{money(payment.amountMinor, payment.currency)}</strong><em role="cell"><Check/>{payment.status.toLowerCase()}</em><time role="cell">{date(payment.createdAt)}</time>
+      </div>)}
+    </div>}
+  </article>;
 }
-function Ledger(){
- const query=useQuery({queryKey:["ledger"],queryFn:()=>api.ledger()}),accounts=useQuery({queryKey:["accounts"],queryFn:()=>api.accounts()}).data??[],names=Object.fromEntries(accounts.map(a=>[a.id,a.name]));
- return <Page eyebrow="Double-entry journal" title="Ledger" copy="Every movement is immutable, balanced and traceable to its originating payment." action={<button><FileClock/>Export journal</button>}><section className="ledger-summary"><div><ShieldCheck/><span><strong>Journal balanced</strong><small>£1,286,742.00 debits = credits</small></span></div><div><BookOpen/><span><strong>1,842 entries</strong><small>3,684 immutable postings</small></span></div><div><Activity/><span><strong>12 sec ago</strong><small>Latest integrity check</small></span></div></section><section className="entries">{(query.data??[]).map(e=><LedgerRow key={e.id} entry={e} names={names}/>)}</section></Page>
+function Payments() {
+  const query = usePayments();
+  const accounts = useAccounts();
+  const [open, setOpen] = useState(false);
+  return <Page eyebrow="Payment orchestration" title="Payments" copy="Transfers committed with their balance changes and journal postings." action={identity().canWrite ? <button className="primary" onClick={() => setOpen(true)}>Create payment<ArrowUpRight/></button> : undefined}>
+    {!identity().canWrite && <p className="demo-banner">You have read-only access. An operator can create payments.</p>}
+    <QueryState query={query} label="payments"/><QueryState query={accounts} label="accounts"/>
+    {query.data && accounts.data && <PaymentTable items={query.data} accounts={accounts.data}/>}
+    {open && <PaymentModal close={() => setOpen(false)}/>}
+  </Page>;
 }
-function LedgerRow({entry,names}:{entry:LedgerEntry;names:Record<string,string>}){const [expanded,setExpanded]=useState(false);return <article className={expanded?"entry expanded":"entry"}><button onClick={()=>setExpanded(!expanded)}><i><BookOpen/></i><span><b>{entry.description}</b><small>{entry.reference}</small></span><em><Check/> {entry.status.toLowerCase()}</em><strong>{money(entry.postings[0]?.amountMinor??0,entry.postings[0]?.currency)}</strong><time>{date(entry.occurredAt)}</time><ChevronDown/></button>{expanded&&<div>{entry.postings.map((p,i)=><p key={i}><i className={p.direction.toLowerCase()}>{p.direction==="DEBIT"?<ArrowUpRight/>:<ArrowDownLeft/>}</i><span><strong>{names[p.accountId]??short(p.accountId)}</strong><small>{p.accountId}</small></span><b>{p.direction==="DEBIT"?"−":"+"}{money(p.amountMinor,p.currency)}</b></p>)}<footer><ShieldCheck/> Balanced journal entry · immutable after posting</footer></div>}</article>}
-
-const curlExample=[
- "curl --request POST http://localhost:8080/api/v1/payments",
- "  --header 'X-Tenant-Id: northstar'",
- "  --header 'Idempotency-Key: order-88422'",
- "  --header 'Content-Type: application/json'",
- "  --data '{",
- "    \"merchantReference\": \"ORD-88422\",",
- "    \"sourceAccountId\": \"11111111-...\",",
- "    \"destinationAccountId\": \"33333333-...\",",
- "    \"amountMinor\": 125000,",
- "    \"currency\": \"GBP\"",
- "  }'",
-].join("\n");
-function Developers(){
- const endpoints=[["POST","/api/v1/payments","Create an idempotent account transfer"],["GET","/api/v1/payments","List tenant-scoped payments"],["GET","/api/v1/accounts","Read balance projections"],["GET","/api/v1/ledger/entries","Inspect immutable journal entries"],["GET","/actuator/prometheus","Scrape operational metrics"]];
- return <Page eyebrow="Integration surface" title="Developers" copy="Versioned APIs, explicit contracts and operational tooling for production integrations." action={<button className="primary"><KeyRound/>Create API key</button>}><section className="dev-grid"><article className="panel endpoints"><PanelTitle eyebrow="REST API · v1" title="Endpoints"/>{endpoints.map(([method,path,desc])=><div key={path}><b className={method.toLowerCase()}>{method}</b><code>{path}</code><span>{desc}</span><button><Copy/></button></div>)}</article><article className="panel code"><header><span>cURL</span><button><Copy/> Copy</button></header><pre>{curlExample}</pre><footer><i/><span>201 Created</span><b>84 ms</b></footer></article></section><section className="contract-grid"><article><ShieldCheck/><h3>OAuth2 resource server</h3><p>JWT scopes separate ledger reads from payment writes.</p></article><article><Boxes/><h3>Transactional outbox</h3><p>Committed payments become ordered Kafka lifecycle events.</p></article><article><ServerCog/><h3>Observable by default</h3><p>Health probes, Prometheus metrics and trace correlation.</p></article></section></Page>
+function PaymentModal({ close }: { close: () => void }) {
+  const accounts = useAccounts();
+  const client = useQueryClient();
+  const [validation, setValidation] = useState("");
+  const prepared = useRef<{ input: CreatePayment; key: string } | undefined>(undefined);
+  const dialog = useRef<HTMLDivElement>(null);
+  const previousFocus = useRef(document.activeElement as HTMLElement | null);
+  const mutation = useMutation({
+    mutationFn: ({ input, key }: { input: CreatePayment; key: string }) => api.createPayment(input, key),
+    onSuccess: async () => { await client.invalidateQueries(); close(); },
+  });
+  useEffect(() => {
+    const previous = previousFocus.current;
+    dialog.current?.focus();
+    return () => previous?.focus();
+  }, []);
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    try {
+      const input: CreatePayment = { merchantReference: String(form.get("reference")).trim(), sourceAccountId: String(form.get("source")), destinationAccountId: String(form.get("destination")), amountMinor: minorUnits(String(form.get("amount"))), currency: "GBP", description: String(form.get("description")).trim() };
+      if (input.sourceAccountId === input.destinationAccountId) throw new Error("Choose two different accounts.");
+      if (!input.merchantReference) throw new Error("Enter a payment reference.");
+      setValidation("");
+      if (!prepared.current || JSON.stringify(prepared.current.input) !== JSON.stringify(input)) prepared.current = { input, key: crypto.randomUUID() };
+      mutation.mutate(prepared.current);
+    } catch (error) { setValidation((error as Error).message); }
+  };
+  const trapFocus = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape" && !mutation.isPending) close();
+    if (event.key !== "Tab") return;
+    const focusable = [...event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled)')];
+    const first = focusable[0], last = focusable.at(-1);
+    if (event.shiftKey && (document.activeElement === first || document.activeElement === event.currentTarget)) { event.preventDefault(); last?.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+  };
+  return <div className="overlay"><div className="dialog" role="dialog" aria-modal="true" aria-labelledby="payment-title" tabIndex={-1} ref={dialog} onKeyDown={trapFocus}>
+    <header><div><p>ACCOUNT TRANSFER</p><h2 id="payment-title">Create a payment</h2></div><button disabled={mutation.isPending} aria-label="Close payment form" onClick={close}><X/></button></header>
+    <QueryState query={accounts} label="accounts"/>
+    {accounts.data && <form onSubmit={submit}><fieldset disabled={mutation.isPending}>
+      <label>Reference<input name="reference" required maxLength={96} placeholder="ORD-88422"/></label>
+      <div className="twocol"><label>From account<select name="source" required defaultValue={accounts.data[0]?.id}>{accounts.data.filter(a => a.currency === "GBP" && a.status === "ACTIVE").map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
+      <label>To account<select name="destination" required defaultValue={accounts.data[1]?.id}>{accounts.data.filter(a => a.currency === "GBP" && a.status === "ACTIVE").map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label></div>
+      <label>Amount (GBP)<input name="amount" inputMode="decimal" pattern="[0-9]+([.][0-9]{1,2})?" required placeholder="125.00"/></label>
+      <label>Description<textarea name="description" maxLength={280} rows={2}/></label>
+      <p className="muted">GBP accounts only. Retrying unchanged details uses the same payment key.</p>
+      {(validation || mutation.error) && <p role="alert" className="error">{validation || mutation.error?.message}</p>}
+      <footer><button type="button" onClick={close}>Cancel</button><button className="primary" type="submit">{mutation.isPending ? "Posting…" : mutation.error ? "Retry payment" : "Post payment"}</button></footer>
+    </fieldset></form>}
+  </div></div>;
+}
+function Accounts() {
+  const query = useAccounts();
+  const search = useContext(SearchContext);
+  const items = query.data?.filter(a => matches(search, a.name, a.externalRef, a.id)) ?? [];
+  return <Page eyebrow="Treasury and merchants" title="Accounts" copy="Balance projections backed by journal postings.">
+    <QueryState query={query} label="accounts"/>
+    {query.data && (items.length ? <section className="account-grid">{items.map(a => <article className="account" key={a.id}><header><i><Landmark/></i><em>{a.status.toLowerCase()}</em></header><p>{a.type}</p><h2>{a.name}</h2><strong>{money(a.balanceMinor, a.currency)}</strong><footer><span>{a.externalRef}</span><b>v{a.version}</b></footer></article>)}</section> : <Empty>{search ? "No accounts match your search." : "No accounts are available."}</Empty>)}
+  </Page>;
+}
+function Ledger() {
+  const query = useLedger();
+  const accounts = useAccounts();
+  const search = useContext(SearchContext);
+  const names = Object.fromEntries((accounts.data ?? []).map(a => [a.id, a.name]));
+  const items = query.data?.filter(entry => matches(search, entry.reference, entry.description, ...entry.postings.map(p => names[p.accountId] ?? p.accountId))) ?? [];
+  const exportJournal = () => downloadCsv("clearledger-journal.csv", ["entry_id", "reference", "occurred_at", "account_id", "direction", "amount_minor", "currency"], items.flatMap(entry => entry.postings.map(p => [entry.id, entry.reference, entry.occurredAt, p.accountId, p.direction, p.amountMinor, p.currency])));
+  return <Page eyebrow="Double-entry journal" title="Ledger" copy="Inspect or export the loaded journal records, up to the latest 100 entries." action={<button className="primary" disabled={!items.length} onClick={exportJournal}><Download/>Export journal</button>}>
+    <QueryState query={query} label="journal"/><QueryState query={accounts} label="accounts"/>
+    {query.data && (items.length ? <section className="entries">{items.map(entry => <LedgerRow key={entry.id} entry={entry} names={names}/>)}</section> : <Empty>{search ? "No journal entries match your search." : "No journal entries yet."}</Empty>)}
+  </Page>;
+}
+function LedgerRow({ entry, names }: { entry: LedgerEntry; names: Record<string, string> }) {
+  const [expanded, setExpanded] = useState(false);
+  return <article className={expanded ? "entry expanded" : "entry"}><button aria-expanded={expanded} onClick={() => setExpanded(!expanded)}><i><BookOpen/></i><span><b>{entry.description}</b><small>{entry.reference}</small></span><em>{entry.status.toLowerCase()}</em><strong>{money(entry.postings[0]?.amountMinor ?? 0, entry.postings[0]?.currency)}</strong><time>{date(entry.occurredAt)}</time><span>{expanded ? "−" : "+"}</span></button>
+    {expanded && <div>{entry.postings.map((posting, index) => <p key={index}><span>{posting.direction}</span><span><strong>{names[posting.accountId] ?? short(posting.accountId)}</strong><small>{posting.accountId}</small></span><b>{money(posting.amountMinor, posting.currency)}</b></p>)}</div>}
+  </article>;
+}
+function Developers() {
+  const [message, setMessage] = useState("");
+  const endpoints = [["POST", "/api/v1/payments", "Create a transfer (write access)"], ["GET", "/api/v1/payments", "Latest payments"], ["GET", "/api/v1/accounts", "Account balances"], ["GET", "/api/v1/ledger/entries", "Latest journal entries"]];
+  const copy = async (text: string) => { try { await navigator.clipboard.writeText(text); setMessage("Copied."); } catch { setMessage("Clipboard is unavailable. Select and copy the text."); } };
+  const example = "curl " + (API_URL || window.location.origin) + "/api/v1/accounts -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'";
+  return <Page eyebrow="Integration surface" title="Developers" copy="Authenticated REST endpoints scoped to your verified tenant.">
+    <div role="status">{message}</div><section className="dev-grid"><article className="panel endpoints"><h2>REST API</h2>{endpoints.map(([method, path, description]) => <div key={path + method}><b>{method}</b><code>{path}</code><span>{description}</span><button aria-label={"Copy " + method + " " + path} onClick={() => void copy(path)}><Copy/></button></div>)}</article>
+      <article className="panel code"><header><span>cURL</span><button onClick={() => void copy(example)}><Copy/>Copy example</button></header><pre>{example}</pre></article></section>
+    <section className="contract-grid"><article><ShieldCheck/><h3>Verified identity</h3><p>Issuer, audience and tenant claims are validated. Client-supplied tenant headers do not select your organisation.</p></article><article><Database/><h3>Atomic transfers</h3><p>Balances, postings, payment records and outbox events commit together.</p></article><article><CreditCard/><h3>Safe retries</h3><p>Reuse the same Idempotency-Key for an unchanged transfer.</p></article></section>
+  </Page>;
 }
