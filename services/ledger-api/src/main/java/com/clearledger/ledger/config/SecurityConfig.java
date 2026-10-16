@@ -21,7 +21,7 @@ public class SecurityConfig {
         converter.setJwtGrantedAuthoritiesConverter(TokenPolicy::authorities);
         return common(http)
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/actuator/health/**", "/docs/**", "/v3/api-docs/**").permitAll()
+                .requestMatchers("/actuator/health/**", "/docs/**", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/**").hasAnyAuthority("SCOPE_ledger:read", "SCOPE_ledger:write")
                 .requestMatchers("/api/v1/**").hasAuthority("SCOPE_ledger:write")
                 .anyRequest().authenticated())

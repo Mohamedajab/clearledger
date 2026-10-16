@@ -2,6 +2,8 @@ package com.clearledger.ledger.api;
 
 import com.clearledger.ledger.payment.*;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import java.net.URI;
@@ -23,7 +25,7 @@ public class PaymentController {
     @PostMapping
     public ResponseEntity<PaymentView> create(
         @AuthenticationPrincipal Jwt jwt,
-        @RequestHeader("Idempotency-Key") String idempotencyKey,
+        @RequestHeader("Idempotency-Key") @NotBlank @Size(max = 128) String idempotencyKey,
         @Valid @RequestBody CreatePaymentCommand command) {
         PaymentView payment = service.create(TenantIdentity.require(jwt), idempotencyKey, command);
         return ResponseEntity.created(URI.create("/api/v1/payments/" + payment.id())).body(payment);

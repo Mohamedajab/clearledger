@@ -18,21 +18,10 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-clearledger}
       POSTGRES_USER: ${POSTGRES_USER:-clearledger}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clearledger}
-    ports: ["5432:5432"]
+    ports: ["127.0.0.1:5432:5432"]
     volumes: ["postgres-data:/var/lib/postgresql/data"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
-  redis:
-    image: redis:8-alpine
-    command: redis-server --appendonly yes
-    ports: ["6379:6379"]
-    volumes: ["redis-data:/data"]
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -50,7 +39,7 @@ services:
       - --check=false
       - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
       - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:19092
-    ports: ["19092:19092", "9644:9644"]
+    ports: ["127.0.0.1:19092:19092", "127.0.0.1:9644:9644"]
     healthcheck:
       test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true'"]
       interval: 8s
@@ -58,10 +47,11 @@ services:
       retries: 12
 
   console:
+    profiles: ["tools"]
     image: redpandadata/console:v3.2.2
     environment:
       KAFKA_BROKERS: redpanda:9092
-    ports: ["8090:8080"]
+    ports: ["127.0.0.1:8090:8080"]
     depends_on:
       redpanda: { condition: service_healthy }
 
@@ -72,17 +62,15 @@ services:
       OIDC_ISSUER_URI: http://localhost:3000/auth/realms/clearledger
       OIDC_JWK_SET_URI: http://keycloak:8080/auth/realms/clearledger/protocol/openid-connect/certs
       OIDC_AUDIENCE: clearledger-api
-      DATABASE_URL: jdbc:postgresql://postgres:5432/clearledger
+      DATABASE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-clearledger}
       DATABASE_USER: ${POSTGRES_USER:-clearledger}
       DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-clearledger}
       KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
-      REDIS_HOST: redis
       OUTBOX_PUBLISHER_ENABLED: "true"
       ALLOWED_ORIGINS: http://localhost:3000,http://localhost:5173
     ports: ["127.0.0.1:8080:8080"]
     depends_on:
       postgres: { condition: service_healthy }
-      redis: { condition: service_healthy }
       redpanda: { condition: service_healthy }
       keycloak: { condition: service_started }
     healthcheck:
@@ -97,20 +85,22 @@ services:
       context: ./apps/control-plane
       args:
         VITE_DEMO_MODE: "false"
-    ports: ["3000:8080"]
+    ports: ["127.0.0.1:3000:8080"]
     depends_on:
       api: { condition: service_healthy }
 
   prometheus:
+    profiles: ["tools"]
     image: prom/prometheus:v3.5.0
     command: --config.file=/etc/prometheus/prometheus.yml
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    ports: ["9090:9090"]
+    ports: ["127.0.0.1:9090:9090"]
     depends_on:
       api: { condition: service_healthy }
 
   grafana:
+    profiles: ["tools"]
     image: grafana/grafana:12.1.1
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
@@ -118,10 +108,9 @@ services:
     volumes:
       - grafana-data:/var/lib/grafana
       - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
-    ports: ["3001:3000"]
+    ports: ["127.0.0.1:3001:3000"]
     depends_on: [prometheus]
 
 volumes:
   postgres-data:
-  redis-data:
   grafana-data:

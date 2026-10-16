@@ -2,6 +2,7 @@ package com.clearledger.ledger.payment;
 
 import jakarta.persistence.*;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 @Entity
@@ -34,7 +35,8 @@ public class PaymentIntent {
         payment.idempotencyKey = idempotencyKey; payment.sourceAccountId = sourceId;
         payment.destinationAccountId = destinationId; payment.amountMinor = amountMinor;
         payment.currency = currency; payment.status = Status.COMPLETED;
-        payment.createdAt = Instant.now(); payment.completedAt = payment.createdAt;
+        // PostgreSQL TIMESTAMPTZ stores microseconds; keep first responses equal to replays.
+        payment.createdAt = Instant.now().truncatedTo(ChronoUnit.MICROS); payment.completedAt = payment.createdAt;
         return payment;
     }
 

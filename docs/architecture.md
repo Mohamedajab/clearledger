@@ -29,14 +29,15 @@ sequenceDiagram
     S-->>C: original result
   else new payment
     S->>P: lock accounts in stable order
+    S->>P: recheck prior key after waiting for locks
     S->>P: update balances
     S->>P: insert payment + journal + postings + outbox
     P->>P: balanced-entry trigger before POSTED update
     P-->>S: commit
     S-->>C: 201 Created
   end
-  O->>P: lock unpublished batch
-  O->>K: publish(event ID, payload)
+  O->>P: read unpublished batch
+  O->>K: publish(payment ID key, payload containing event ID)
   K-->>O: broker acknowledgement
   O->>P: mark published
 ```
@@ -44,10 +45,11 @@ sequenceDiagram
 ## Consistency and concurrency
 
 - Amounts are positive 64-bit minor units; currency is explicit.
-- Source and destination account rows are pessimistically locked in lexicographic UUID order.
+- Source and destination account rows are pessimistically locked in Java UUID natural order.
+- An idempotency lookup is repeated after acquiring the account locks so identical concurrent retries reuse the committed payment. Conflicting keys/references roll back and return HTTP 409.
 - The account `version` column detects stale writes outside the locked payment path.
 - A journal cannot post unless total debits equal total credits and at least two postings exist.
-- A PostgreSQL constraint trigger validates the same condition at the database boundary.
+- A PostgreSQL trigger validates the same condition before the status changes to POSTED.
 - Posted journal entries are immutable through the domain API.
 - Tenant ID participates in all important uniqueness and lookup boundaries.
 
@@ -58,14 +60,14 @@ sequenceDiagram
 | Validation/currency/funds failure | Transaction rolls back; no event exists |
 | API process exits before commit | PostgreSQL rolls back |
 | API exits after commit before response | Client retries the idempotency key and receives the existing payment |
-| Broker unavailable | Outbox remains pending and is retried |
+| Broker unavailable | Outbox retries pending events; after ten failed attempts an event is marked FAILED and requires operational recovery |
 | Worker exits after broker ack before marking row | Event may be published again; consumer deduplicates by event ID |
 | Two payments spend one account | Row lock serializes balance decisions |
 | Opposing transfers | Stable lock ordering reduces deadlock risk |
 
 ## Scaling path
 
-API replicas are stateless. PostgreSQL remains the serialization point for account mutation. Read replicas can serve journal/history queries if their lag is acceptable. Outbox workers use `SKIP LOCKED` semantics so multiple replicas can divide a batch. Hot accounts eventually require partitioning, reservation semantics, or a single-writer stream; those costs should be driven by measurements.
+API replicas are stateless. PostgreSQL remains the serialization point for account mutation. Read replicas can serve journal/history queries if their lag is acceptable. Run only one active outbox publisher: the current polling query does not claim or lock rows between replicas. Set `OUTBOX_PUBLISHER_ENABLED=false` on other API instances. Before scaling publication, implement and test database-backed claims such as `FOR UPDATE SKIP LOCKED`. Hot accounts may eventually require partitioning or reservation semantics; those costs should be driven by measurements.
 
 ## Operational model
 

@@ -31,6 +31,47 @@ class TenantSecurityTest {
     @MockitoBean PaymentService service;
 
     @Test
+    void invalidPaymentKeysAreBadRequestsWithoutCallingTheService() throws Exception {
+        for (String key : new String[] { null, "", " ", "x".repeat(129) }) {
+            var request = post("/api/v1/payments").contentType("application/json").content("""
+                {"merchantReference":"ORDER-1","sourceAccountId":"11111111-1111-1111-1111-111111111111",
+                 "destinationAccountId":"22222222-2222-2222-2222-222222222222","amountMinor":100,"currency":"GBP"}
+                """)
+                .with(jwt().jwt(token -> token.claim("tenant_id", "northstar"))
+                    .authorities(new SimpleGrantedAuthority("SCOPE_ledger:write")));
+            if (key != null) request.header("Idempotency-Key", key);
+            mvc.perform(request).andExpect(status().isBadRequest());
+        }
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void malformedPaymentJsonIsABadRequest() throws Exception {
+        mvc.perform(post("/api/v1/payments").header("Idempotency-Key", "key-1")
+            .contentType("application/json").content("{")
+            .with(jwt().jwt(token -> token.claim("tenant_id", "northstar"))
+                .authorities(new SimpleGrantedAuthority("SCOPE_ledger:write"))))
+            .andExpect(status().isBadRequest());
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void unexpectedDatabaseFailuresRemainSanitizedServerErrors() throws Exception {
+        when(service.create(anyString(), anyString(), any())).thenThrow(
+            new org.springframework.dao.DataIntegrityViolationException("private database detail",
+                new org.hibernate.exception.ConstraintViolationException("private constraint detail", null, (String) null)));
+        mvc.perform(post("/api/v1/payments").header("Idempotency-Key", "key-1")
+            .contentType("application/json").content("""
+                {"merchantReference":"ORDER-1","sourceAccountId":"11111111-1111-1111-1111-111111111111",
+                 "destinationAccountId":"22222222-2222-2222-2222-222222222222","amountMinor":100,"currency":"GBP"}
+                """)
+            .with(jwt().jwt(token -> token.claim("tenant_id", "northstar"))
+                .authorities(new SimpleGrantedAuthority("SCOPE_ledger:write"))))
+            .andExpect(status().isInternalServerError())
+            .andExpect(jsonPath("$.detail").value("Unexpected server error"));
+    }
+
+    @Test
     void unauthenticatedRequestsAreRejected() throws Exception {
         mvc.perform(get("/api/v1/accounts")).andExpect(status().isUnauthorized());
         verifyNoInteractions(accounts);
@@ -70,6 +111,7 @@ class TenantSecurityTest {
         mvc.perform(get("/api/v1/dashboard").with(jwt().jwt(token -> token.claim("tenant_id", "northstar"))
             .authorities(new SimpleGrantedAuthority("SCOPE_ledger:read"))))
             .andExpect(status().isOk()).andExpect(jsonPath("$.pendingEvents").value(3));
-        verify(outbox, never()).countByStatus(any());
+        verify(outbox).countForTenant("northstar", OutboxEvent.Status.PENDING);
+        verifyNoMoreInteractions(outbox);
     }
 }

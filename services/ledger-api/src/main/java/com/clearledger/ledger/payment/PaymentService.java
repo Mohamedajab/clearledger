@@ -30,11 +30,7 @@ public class PaymentService {
     @Transactional
     public PaymentView create(String tenantId, String idempotencyKey, CreatePaymentCommand command) {
         Optional<PaymentIntent> replay = payments.findByTenantIdAndIdempotencyKey(tenantId, idempotencyKey);
-        if (replay.isPresent()) {
-            PaymentIntent previous = replay.get();
-            if (!sameRequest(previous, command)) throw new IdempotencyConflictException();
-            return PaymentView.from(previous);
-        }
+        if (replay.isPresent()) return replay(replay.get(), command);
         if (command.sourceAccountId().equals(command.destinationAccountId())) {
             throw new IllegalArgumentException("Source and destination accounts must differ");
         }
@@ -47,6 +43,9 @@ public class PaymentService {
                 .orElseThrow(() -> new NoSuchElementException("Account not found: " + id));
             locked.put(id, account);
         }
+        // An identical request may have committed while we waited for these locks.
+        replay = payments.findByTenantIdAndIdempotencyKey(tenantId, idempotencyKey);
+        if (replay.isPresent()) return replay(replay.get(), command);
         Account source = locked.get(command.sourceAccountId());
         Account destination = locked.get(command.destinationAccountId());
         String currency = command.currency().toUpperCase(Locale.ROOT);
@@ -80,6 +79,11 @@ public class PaymentService {
     public List<PaymentView> list(String tenantId, int limit) {
         return payments.findByTenantIdOrderByCreatedAtDesc(tenantId, PageRequest.of(0, Math.min(limit, 100)))
             .stream().map(PaymentView::from).toList();
+    }
+
+    private PaymentView replay(PaymentIntent payment, CreatePaymentCommand command) {
+        if (!sameRequest(payment, command)) throw new IdempotencyConflictException();
+        return PaymentView.from(payment);
     }
 
     private boolean sameRequest(PaymentIntent payment, CreatePaymentCommand command) {

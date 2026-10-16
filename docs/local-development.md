@@ -26,14 +26,22 @@ The sample `.env` contains development passwords: **change them for any
 non-isolated experiment** and never commit the populated file.
 
 `docker compose config` expands and checks the Compose model without starting
-services. The API waits for healthy PostgreSQL, Redis and Redpanda; the UI and
-monitoring services start after the API health check passes. First builds can
+services. The API waits for healthy PostgreSQL and Redpanda; the UI starts
+after the API health check passes. First builds can
 take longer due to image and Java/Node dependency downloads.
 
-**Configuration detail:** the Compose API's `DATABASE_URL` explicitly targets
-`/clearledger`, whereas PostgreSQL's database name comes from `POSTGRES_DB`.
-If you change the latter, update the matching API URL as well. Do not assume
-changing just `.env` updates both sides.
+`POSTGRES_DB` configures both the database and the API connection URL. PostgreSQL
+creates that database on a fresh data volume; changing the variable does not
+rename a database already stored in a volume.
+
+Broker inspection, Prometheus and Grafana are optional. To start them too:
+
+```bash
+docker compose --profile tools up --build -d
+```
+
+The core payment workflow does not require these tools. The Prometheus example
+still needs a configured scrape credential for the authenticated metrics endpoint.
 
 ## Local endpoints
 
@@ -43,12 +51,12 @@ changing just `.env` updates both sides.
 | Swagger UI | http://localhost:8080/docs | API documentation |
 | API health | http://localhost:8080/actuator/health | Actuator health endpoint |
 | API readiness | http://localhost:8080/actuator/health/readiness | Used by Compose readiness check |
-| Redpanda Console | http://localhost:8090 | Kafka-compatible broker inspection |
-| Prometheus | http://localhost:9090 | Metrics |
-| Grafana | http://localhost:3001 | Local login: admin / value of `GRAFANA_ADMIN_PASSWORD` |
+| Redpanda Console | http://localhost:8090 | Optional `tools` profile |
+| Prometheus | http://localhost:9090 | Optional `tools` profile; configure scrape authentication |
+| Grafana | http://localhost:3001 | Optional `tools` profile; admin / value of `GRAFANA_ADMIN_PASSWORD` |
 
-The database also publishes port 5432, Redis port 6379 and Redpanda's
-external Kafka port 19092 on the host. These bindings are for local testing.
+The database also publishes port 5432 and Redpanda's external Kafka port 19092
+on the host. All published ports bind to loopback for local testing.
 If any port is in use, change the relevant host mapping in `compose.yml`.
 
 Quick checks:
@@ -73,15 +81,16 @@ once the demo accounts are present. That example supplies
    returned payment identifier.
 2. Send the **identical payload with the same key**. It should resolve to the
    original payment rather than moving funds twice.
-3. Send a **different payload with that same key**. The API documents
-   `409 Conflict` for payload-aware key reuse.
+3. Change the amount, accounts, currency or merchant reference and reuse the key.
+   The API returns `409 Conflict`; a replay retains the original journal description.
 4. Inspect payment/journal state and the Redpanda Console topic
    `payments.lifecycle.v1` to understand the outbox path.
 
 Do not treat the Kafka topic as an exactly-once delivery channel: the
 publisher marks an outbox record after broker acknowledgement, so a crash at
 that boundary can lead to duplicate delivery. Production consumers need
-their own durable event-ID deduplication.
+their own durable event-ID deduplication. Keep only one active publisher:
+the current query does not claim rows across instances.
 
 Account UUIDs in examples are demonstration fixtures, not credentials.
 If the local database has been reset, replaced or manually edited, confirm
@@ -136,17 +145,30 @@ cd services/ledger-api
 cd ../../apps/control-plane
 npm ci
 npm run lint
+npm test
 npm run build
 ```
 
 For Windows without a Unix-style shell, use `mvnw.cmd verify` for the backend.
-The database integration tests use Testcontainers when Docker is available;
-inspect the test output rather than assuming all integration cases executed.
+The database integration tests use Testcontainers when Docker is available.
+Alternatively, point them at a dedicated disposable PostgreSQL database:
+
+```powershell
+$env:LEDGER_TEST_DATABASE_URL = 'jdbc:postgresql://localhost:5432/clearledger_tests'
+$env:LEDGER_TEST_DATABASE_USER = 'clearledger'
+$env:LEDGER_TEST_DATABASE_PASSWORD = 'your-local-test-password'
+./mvnw.cmd verify
+```
+
+Create the empty test database first. Tests apply migrations and add isolated
+sample tenants; never use a live or shared application database. Without Docker
+or an explicit test URL, database tests are skipped; inspect the test output.
+CI uses a fresh Testcontainers PostgreSQL instance and runs the concurrency cases.
 
 | Symptom | First checks |
 | --- | --- |
 | UI is not reachable | `docker compose ps` and `docker compose logs --tail=100 ui api` |
-| API unhealthy | Database/Redis/Redpanda health, then API logs; read the readiness result |
+| API unhealthy | Database/Redpanda health, then API logs; read the readiness result |
 | Cannot connect to PostgreSQL | Host port 5432, `POSTGRES_DB` vs `DATABASE_URL`, and volume state |
 | Payment conflicts | Key reused with a different payload, tenant mismatch, account status/currency/funds |
 | No event in broker | Confirm the DB transaction succeeded, worker is enabled, and publisher/broker logs |
@@ -158,8 +180,9 @@ inspect the test output rather than assuming all integration cases executed.
 docker compose down
 ```
 
-This stops the stack but **retains named volumes** (`postgres-data`,
-`redis-data` and `grafana-data`), so restarting can preserve local state.
+This stops the core stack but **retains named volumes** (`postgres-data` and
+`grafana-data`). If the optional tools are running, stop those with
+`docker compose --profile tools down`. Restarting preserves stored local state.
 
 ```bash
 docker compose down -v
