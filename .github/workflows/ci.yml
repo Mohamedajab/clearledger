@@ -56,7 +56,7 @@ jobs:
           cache: npm
           cache-dependency-path: apps/control-plane/package-lock.json
       - name: Start authenticated local fixture
-        run: docker compose up -d --wait --wait-timeout 180 postgres redis redpanda keycloak api ui
+        run: docker compose up -d --wait --wait-timeout 180 postgres redpanda keycloak api ui
       - name: Wait for identity provider
         run: |
           for attempt in $(seq 1 60); do

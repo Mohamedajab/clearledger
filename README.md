@@ -4,14 +4,12 @@
 
 ClearLedger accepts idempotent account transfers, locks balances safely, writes balanced immutable journal entries, and publishes payment events through a transactional outbox. A React operations console exposes the same API used by integrations. The repository includes observability, container orchestration, security boundaries, database migrations, architecture tests, and CI.
 
-> Portfolio positioning: this project demonstrates the sort of consistency, failure handling, security and operability decisions expected in backend and full-stack engineering—not merely CRUD screens.
-
 ## What makes it technically interesting
 
 - **Money is stored in minor units** (`long`/`BIGINT`), avoiding floating-point errors.
 - **Double-entry invariants exist twice:** in the Java aggregate and in a PostgreSQL trigger that checks postings before the journal changes to POSTED.
 - **Concurrent payments use deterministic pessimistic row locking** plus optimistic version columns, preventing overspend and lock-order deadlocks.
-- **Idempotency is tenant-scoped and payload-aware.** Replays return the original result; key reuse with a different payload fails.
+- **Idempotency is tenant-scoped.** Identical concurrent retries return the original payment; changing its accounts, amount, currency or reference returns a conflict. The original journal description is retained on replay.
 - **Payment, balance projection, journal and outbox event commit atomically** in one database transaction.
 - **Kafka publishing is at-least-once.** The outbox worker marks events only after broker acknowledgement, so consumers must deduplicate by event ID.
 - **Verified tenant identity:** issuer, expiry, API audience and `tenant_id` are validated. Tenant headers cannot select another organisation, and pending-event counts are tenant-scoped.
@@ -27,7 +25,6 @@ ClearLedger accepts idempotent account transfers, locks balances safely, writes 
 | Security | Spring Security, OAuth2 Resource Server, JWT scopes | Stateless API authentication and write/read authorization |
 | Data | PostgreSQL 17, Spring Data JPA, Flyway | ACID ledger, migrations, locks and database constraints |
 | Messaging | Kafka-compatible Redpanda, transactional outbox | Reliable payment lifecycle events |
-| Cache | Redis 8 | Production-ready cache/coordination dependency |
 | Operations | Actuator, Micrometer, OpenTelemetry bridge, Prometheus, Grafana | Health, metrics and trace correlation |
 | Delivery | Docker, Compose, Nginx, GitHub Actions | Reproducible runtime and gated builds |
 | Quality | JUnit 5, Mockito, AssertJ, Testcontainers, ArchUnit, Oxlint | Unit, boundary, database and architecture verification |
@@ -44,7 +41,6 @@ flowchart LR
   PG --> Outbox[Outbox events]
   Worker[Outbox publisher] -->|lock batch| Outbox
   Worker -->|broker ack| Kafka[(Kafka / Redpanda)]
-  API --> Redis[(Redis)]
   Prom[Prometheus] -->|scrape| API
   Grafana[Grafana] --> Prom
 ```
@@ -62,14 +58,20 @@ cp .env.example .env
 docker compose up --build
 ```
 
+The default stack runs the database, identity provider, broker, API and UI. Broker inspection and monitoring are optional:
+
+```bash
+docker compose --profile tools up --build
+```
+
 | Service | URL |
 |---|---|
 | Operations console | http://localhost:3000 |
 | Swagger UI | http://localhost:8080/docs |
 | API health | http://localhost:8080/actuator/health |
-| Redpanda Console | http://localhost:8090 |
-| Prometheus | http://localhost:9090 |
-| Grafana | http://localhost:3001 (admin / value from `.env`) |
+| Redpanda Console (`tools` profile) | http://localhost:8090 |
+| Prometheus (`tools` profile) | http://localhost:9090 |
+| Grafana (`tools` profile) | http://localhost:3001 (admin / value from `.env`) |
 
 Compose includes a local Keycloak realm and uses the authenticated API in every profile. At http://localhost:3000, sign in as **operator** or **reader** with the local-only password `Local-demo-only-2026!`. The `other-tenant` account demonstrates an empty organisation without Northstar access. See [authentication](docs/authentication.md) for PKCE, token refresh, tenant claims and production configuration.
 
@@ -102,12 +104,13 @@ curl -X POST http://localhost:8080/api/v1/payments \
   }'
 ```
 
-Submitting the identical request with the same key is safe. Reusing the key for different payment data returns `409 Conflict`.
+Submitting the identical request with the same key is safe, including simultaneous retries. Reusing the key with different transfer fields or reusing a merchant reference returns `409 Conflict`. Keys must contain 1–128 characters and cannot be blank.
 
 ## The payment transaction
 
 1. Validate the command and look up any prior idempotent result.
 2. Lock both accounts in stable UUID order.
+   Recheck the idempotency key after waiting for the locks, before changing either balance.
 3. Verify tenant, status, currency and available funds.
 4. Apply debit and credit balance projections.
 5. Create two equal and opposite postings.
@@ -119,7 +122,7 @@ Submitting the identical request with the same key is safe. Reusing the key for 
 ## Verification
 
 ```bash
-# Backend: unit + service + ArchUnit; integration test activates when Docker is present
+# Backend: unit + service + ArchUnit; PostgreSQL integration uses Docker or an explicit test database
 cd services/ledger-api
 ./mvnw verify
 
@@ -131,7 +134,7 @@ npm test
 npm run build
 ```
 
-CI repeats both pipelines, validates the Compose model, and builds production images. Testcontainers runs the real PostgreSQL migrations and exercises idempotent API calls when Docker is available.
+CI repeats both pipelines, validates the Compose model, and builds production images. Testcontainers runs the real PostgreSQL migrations and exercises sequential and simultaneous replays, conflicting keys/references and competing spends. Without Docker, a dedicated local PostgreSQL database can be supplied as described in the [runbook](docs/local-development.md#tests-and-diagnosis).
 
 ## Repository map
 
@@ -159,6 +162,8 @@ compose.yml                  Complete local platform
 - How are issuer, audience, permissions and tenant identity validated independently?
 
 ## Deliberate next steps
+
+The outbox currently uses one polling publisher and marks an event FAILED after ten failed attempts. Multi-publisher row claims and failed-event replay are not implemented.
 
 This repository keeps the core complete and the roadmap honest. Production evolution would add a consumer-side inbox, automated journal-to-projection reconciliation, OIDC realm provisioning, rate limiting, and Kubernetes/Helm deployment. These are documented boundaries, not features claimed by the UI.
 
