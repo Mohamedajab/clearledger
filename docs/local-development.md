@@ -89,7 +89,9 @@ once the demo accounts are present. That example supplies
 Do not treat the Kafka topic as an exactly-once delivery channel: the
 publisher marks an outbox record after broker acknowledgement, so a crash at
 that boundary can lead to duplicate delivery. Production consumers need
-their own durable event-ID deduplication. Keep only one active publisher:
+their own durable event-ID deduplication. The `event-id` Kafka header identifies
+the persisted outbox row and remains the same across retries; the JSON payload
+is unchanged. Keep only one active publisher:
 the current query does not claim rows across instances.
 
 Account UUIDs in examples are demonstration fixtures, not credentials.
@@ -200,3 +202,20 @@ alerting. A successful Compose startup or unit-test run does not establish
 PCI compliance, production-grade tenant authentication or end-to-end
 exactly-once event processing.
 
+
+## Verify broker outage and recovery
+
+With the local Compose fixture running, execute the browser suite in the authentication guide.
+Its recovery case pauses only the local Redpanda container, posts a real sample transfer, retries
+its idempotency key, checks a changed request returns 409, and waits for a persisted failed publish
+attempt. It resumes Redpanda in a finally block, then verifies publication without a second debit,
+new payment or journal. PostgreSQL inspection uses SELECT queries only.
+
+This check requires the standard localhost:3000 fixture and should not be run against a shared
+application. It leaves sample payments in the local database. It never resets volumes. CI runs
+it on a disposable fixture and uploads broker-recovery JSON with the browser artifacts.
+
+The publisher logs event ID, attempt, status and exception class on failure. It omits payloads,
+exception messages and stack traces. Interruption preserves the thread flag, stops the current
+batch and leaves uncertain work pending. Ten failed attempts still mark an event FAILED;
+this pass adds no automatic replay of exhausted events and no multi-publisher claiming.

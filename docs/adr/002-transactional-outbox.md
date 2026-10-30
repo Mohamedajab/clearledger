@@ -18,3 +18,14 @@ Delivery may be repeated, not globally exactly-once. A crash after broker acknow
 ## Consequences
 
 Event publication is asynchronous and introduces measurable lag. The current query does not implement row claims or `SKIP LOCKED`; enable the publisher on only one application instance. Multiple publishers require tested claims or leases first. Old published rows require retention/archival. High volume may justify change-data-capture rather than polling.
+
+## Delivery identifier and interruption
+
+The Kafka `event-id` header is the persisted outbox row UUID, stable across send attempts.
+The existing JSON payload and aggregate-based partition key are unchanged. Consumers should
+choose and persist a deduplication identifier consistently. A missing acknowledgement does
+not establish that the broker rejected the message; retries can produce duplicates.
+
+The publisher preserves interruption, stops its batch and leaves the interrupted event pending.
+Other failures increment the existing attempt counter; ten failures exhaust the policy.
+Only one publisher is supported: reading a batch does not claim rows across instances.
