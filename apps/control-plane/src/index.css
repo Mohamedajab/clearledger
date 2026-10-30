@@ -1,27 +1,36 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap');
-
+@font-face {
+  font-family: "Public Sans";
+  src: url("/fonts/public-sans.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
 :root {
-  font-family: Manrope, Inter, system-ui, sans-serif;
-  color: #17211d;
-  background: #f4f7f5;
+  font-family: "Public Sans", sans-serif;
+  color: #20313b;
+  background: #f3f5f7;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  --ink: #17211d;
-  --muted: #68746e;
-  --line: #dfe6e2;
-  --green: #0e7650;
-  --mint: #dff5e9;
-  --navy: #10231d;
-  --paper: #fff;
+  --ink: #20313b;
+  --muted: #596b76;
+  --line: #d8e0e6;
+  --navy: #243f59;
+  --green: #286448;
 }
-
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; min-height: 100vh; }
-button, input, select { font: inherit; }
-button, a { -webkit-tap-highlight-color: transparent; }
+body { margin: 0; min-width: 320px; min-height: 100vh; font-size: 14px; line-height: 1.5; }
+button, input, select, textarea { font: inherit; }
+button, a { touch-action: manipulation; -webkit-tap-highlight-color: #d9e6f0; }
 button { cursor: pointer; }
-a { color: inherit; }
-svg { width: 18px; height: 18px; stroke-width: 1.8; }
+button:disabled { cursor: not-allowed; opacity: .55; }
+a { color: var(--navy); text-underline-offset: 4px; }
+a:hover { color: #125488; }
+svg { width: 18px; height: 18px; stroke-width: 1.7; flex-shrink: 0; }
 #root { min-height: 100vh; }
-::selection { color: #fff; background: #0e7650; }
-*:focus-visible { outline: 3px solid rgba(14,118,80,.28); outline-offset: 2px; }
+::selection { color: white; background: #285c82; }
+:focus-visible { outline: 3px solid #3476a9; outline-offset: 3px; }
+h1, h2, h3 { text-wrap: balance; }
+button { border: 1px solid #bfccd6; border-radius: 5px; color: var(--ink); background: white; padding: 9px 13px; }
+button:hover:not(:disabled) { background: #edf3f8; }
+.muted { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.error { color: #9b302c; }
