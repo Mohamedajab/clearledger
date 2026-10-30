@@ -43,7 +43,8 @@ free allowances, which determine availability; it does not provide a spending gu
 - Wrangler dry run and deployment passed. Deployment version:
   `d2adc965-6834-4e5d-931f-90c33f242fe7`.
 
-Java/PostgreSQL/Compose verification is separate from this static deployment. The earlier
-PR CI run [41095115519](https://github.com/Mohamedajab/clearledger/actions/runs/41095115519)
+Java/PostgreSQL/Compose verification is separate from this static deployment. The
+PR CI run [41139137627](https://github.com/Mohamedajab/clearledger/actions/runs/41139137627)
 passed 33 backend tests, 11 frontend tests and four authenticated browser cases, including
-broker outage/recovery. Java and a running Docker engine were unavailable locally.
+broker outage/recovery, plus the new browser-demo test. Backend tests had no skips.
+Java and a running Docker engine were unavailable locally.

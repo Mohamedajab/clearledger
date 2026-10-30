@@ -25,7 +25,7 @@ Local environment: 30 October 2026, Windows, Node 24.16.0.
 
 - Frontend lint, 11 tests, TypeScript checking and production build passed.
 - Updated Vite and Undici within existing dependency ranges after npm audit reported two high-severity development dependency findings; the resulting audit reports zero findings.
-- Java and a running Docker engine were unavailable locally. Backend tests and Compose recovery require the PR CI result before they can be called verified.
+- Java and a running Docker engine were unavailable locally. [CI run 41139137627](https://github.com/Mohamedajab/clearledger/actions/runs/41139137627) passed 33 backend tests with no skips, using real PostgreSQL, plus all four authenticated Compose browser cases and the public-demo browser test.
 
 CI provisions Java 21 and real PostgreSQL tests, builds the application images, starts the
 Keycloak/PostgreSQL/Redpanda fixture and runs four authenticated browser scenarios.
