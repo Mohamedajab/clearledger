@@ -91,6 +91,7 @@ function Overview() {
   const ledger = useLedger();
   const data = dashboard.data;
   const canWrite = identity().canWrite;
+  const balanced = ledger.data?.every(entry => entry.postings.reduce((balance, posting) => balance + (posting.direction === "DEBIT" ? posting.amountMinor : -posting.amountMinor), 0) === 0);
   return <Page title="Overview" copy="Account balances, recent transfers and their journal entries." action={<NavLink className="primary" to="/payments">{canWrite ? "Create payment" : "View payments"}</NavLink>}>
     <QueryState query={dashboard} label="summary"/>
     {data && <section className="metrics">
@@ -101,7 +102,7 @@ function Overview() {
     </section>}
     {data && <p className="muted">Summary updated {date(data.asOf)}. Payment and journal lists show up to the latest 100 records.</p>}
     <QueryState query={accounts} label="accounts"/><QueryState query={ledger} label="journal"/>
-    {ledger.data && <article className="integrity"><ShieldCheck aria-hidden="true"/><div><h2>Journal check</h2><p>{ledger.data.every(entry => entry.postings.reduce((balance, posting) => balance + (posting.direction === "DEBIT" ? posting.amountMinor : -posting.amountMinor), 0) === 0) ? "All loaded entries are balanced." : "An unbalanced entry needs investigation."} <span>{ledger.data.length} {ledger.data.length === 1 ? "entry" : "entries"}, {ledger.data.reduce((sum, entry) => sum + entry.postings.length, 0)} postings.</span></p></div><NavLink to="/ledger">Inspect journal</NavLink></article>}
+    {ledger.data && <article className={balanced ? "integrity" : "integrity error"} role={balanced ? undefined : "alert"}><ShieldCheck aria-hidden="true"/><div><h2>Journal check</h2><p>{balanced ? "All loaded entries are balanced." : "An unbalanced entry needs investigation."} <span>{ledger.data.length} {ledger.data.length === 1 ? "entry" : "entries"}, {ledger.data.reduce((sum, entry) => sum + entry.postings.length, 0)} postings.</span></p></div><NavLink to="/ledger">Inspect journal</NavLink></article>}
     <QueryState query={payments} label="payments"/>
     {payments.data && <PaymentTable items={payments.data.slice(0, 8)} accounts={accounts.data ?? []}/>}
   </Page>;

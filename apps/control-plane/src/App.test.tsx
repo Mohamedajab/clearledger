@@ -80,3 +80,12 @@ it("does not fetch private records before authentication", async () => {
   await waitFor(() => expect(api.accounts).not.toHaveBeenCalled());
   expect(api.payments).not.toHaveBeenCalled();
 });
+
+it("announces an unbalanced loaded journal instead of presenting a successful check", async () => {
+  const entries = await new DemoClient().ledger();
+  entries[0].postings.pop();
+  vi.mocked(api.ledger).mockResolvedValue(entries);
+  show("/overview");
+  expect(await screen.findByRole("alert")).toHaveTextContent("An unbalanced entry needs investigation.");
+  expect(screen.queryByText("All loaded entries are balanced.")).not.toBeInTheDocument();
+});

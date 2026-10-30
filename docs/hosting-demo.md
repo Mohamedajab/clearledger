@@ -36,10 +36,11 @@ free allowances, which determine availability; it does not provide a spending gu
 Frontend revision, 30 October 2026: [design choices](design.md) document the payments-workspace
 layout. Removed obsolete chart/card styling and the overriding stylesheet. The payment dialog
 now uses the real `.overlay` and form-label selectors. Public Sans is served locally under its
-included OFL licence. Lint, all 11 unit tests, ordinary production build, demo build and both
+included OFL licence. Lint, all 12 unit tests, ordinary production build, demo build and both
 demo browser cases passed locally. The added browser case covers mobile form labels,
 keyboard opening/Escape/focus return, navigation and page overflow; the existing case checks
-the fixed overlay and focus trap as well as sample payments and journals.
+the fixed overlay and focus trap as well as sample payments and journals. A unit regression
+checks that an unbalanced loaded journal is announced as an alert rather than a successful check.
 
 30 October 2026, Windows, Node 24.16.0, Chromium via Playwright:
 
