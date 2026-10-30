@@ -4,7 +4,11 @@ A Java and React application for account transfers and double-entry journals.
 Transfers, balances, journals and outgoing events commit in one PostgreSQL transaction.
 The publisher sends events after commit and keeps unacknowledged work for retry.
 
-[Run locally](#run-the-entire-platform) · [Evaluation and CV notes](docs/verification.md) · [Authentication](docs/authentication.md)
+[Live browser demo](https://clearledger-demo.backstop.workers.dev) · [Run locally](#run-the-entire-platform) · [Evaluation and CV notes](docs/verification.md)
+
+The public demo uses browser-local sample data and resets on reload. The Java API,
+PostgreSQL and Kafka run in the authenticated Compose workflow below.
+See [demo setup and verified checks](docs/hosting-demo.md).
 
 ## What makes it technically interesting
 

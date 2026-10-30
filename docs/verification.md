@@ -30,7 +30,8 @@ Local environment: 30 October 2026, Windows, Node 24.16.0.
 CI provisions Java 21 and real PostgreSQL tests, builds the application images, starts the
 Keycloak/PostgreSQL/Redpanda fixture and runs four authenticated browser scenarios.
 The database integration suite now fails in CI if no PostgreSQL runtime is available.
-No schemas, REST contracts, payment payloads or hosted deployments changed. The Kafka message
+No schemas, REST contracts or payment payloads changed. A separate [public browser demo](hosting-demo.md)
+hosts the sample UI without the backend. The Kafka message
 adds a stable event-id header. Single-publisher and at-least-once delivery limits remain.
 
 ## Suggested CV bullets
