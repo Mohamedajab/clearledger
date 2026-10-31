@@ -1,14 +1,20 @@
 # ClearLedger
 
-**A full stack portfolio application for account transfers and double-entry journals.**
+A Java and React application for account transfers and double-entry journals.
+Transfers, balances, journals and outgoing events commit in one PostgreSQL transaction.
+The publisher sends events after commit and keeps unacknowledged work for retry.
 
-ClearLedger accepts idempotent account transfers, locks balances safely, writes balanced immutable journal entries, and publishes payment events through a transactional outbox. A React operations console exposes the same API used by integrations. The repository includes observability, container orchestration, security boundaries, database migrations, architecture tests, and CI.
+[Live browser demo](https://clearledger-demo.backstop.workers.dev) · [Run locally](#run-the-entire-platform) · [Evaluation and CV notes](docs/verification.md)
+
+The public demo uses browser-local sample data and resets on reload. The Java API,
+PostgreSQL and Kafka run in the authenticated Compose workflow below.
+See [demo setup and verified checks](docs/hosting-demo.md).
 
 ## What makes it technically interesting
 
 - **Money is stored in minor units** (`long`/`BIGINT`), avoiding floating-point errors.
 - **Double-entry invariants exist twice:** in the Java aggregate and in a PostgreSQL trigger that checks postings before the journal changes to POSTED.
-- **Concurrent payments use deterministic pessimistic row locking** plus optimistic version columns, preventing overspend and lock-order deadlocks.
+- **Concurrent payments use deterministic pessimistic row locking** plus optimistic version columns, preventing overspend and reducing lock-order deadlock risk.
 - **Idempotency is tenant-scoped.** Identical concurrent retries return the original payment; changing its accounts, amount, currency or reference returns a conflict. The original journal description is retained on replay.
 - **Payment, balance projection, journal and outbox event commit atomically** in one database transaction.
 - **Kafka publishing is at-least-once.** The outbox worker marks events only after broker acknowledgement, so consumers must deduplicate by event ID.
@@ -39,7 +45,7 @@ flowchart LR
   PG --> Accounts[Balance projections]
   PG --> Journal[Journal + postings]
   PG --> Outbox[Outbox events]
-  Worker[Outbox publisher] -->|lock batch| Outbox
+  Worker[Outbox publisher] -->|read pending batch| Outbox
   Worker -->|broker ack| Kafka[(Kafka / Redpanda)]
   Prom[Prometheus] -->|scrape| API
   Grafana[Grafana] --> Prom

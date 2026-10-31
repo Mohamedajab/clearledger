@@ -2,12 +2,11 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
-import { Activity, ArrowUpRight, BookOpen, Check, CircleHelp, Copy, CreditCard, Database, Download, ExternalLink, Gauge, Landmark, LogOut, Menu, Search, ShieldCheck, WalletCards, X } from "lucide-react";
+import { BookOpen, Check, CircleHelp, Copy, CreditCard, Database, Download, ExternalLink, Gauge, Landmark, LogOut, Menu, Search, ShieldCheck, WalletCards, X } from "lucide-react";
 import { api, API_URL, type CreatePayment, type LedgerEntry, type Payment } from "./api";
 import { DEMO_MODE, identity, initializeAuth, signIn, signOut } from "./auth";
 import { downloadCsv, minorUnits } from "./format";
 import "./App.css";
-import "./workspace.css";
 
 const money = (n: number, currency = "GBP") => new Intl.NumberFormat("en-GB", { style: "currency", currency }).format(n / 100);
 const date = (value: string) => new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
@@ -34,7 +33,7 @@ export default function App() {
     return () => { active = false; window.removeEventListener("clearledger:session-expired", expired); };
   }, [client]);
   if (status !== "signed-in") return <main className="auth-layout">
-    <Landmark size={36}/><p className="eyebrow">CLEARLEDGER</p><h1>Your payments workspace.</h1>
+    <Landmark size={36}/><p>ClearLedger</p><h1>Your payments workspace</h1>
     {status === "loading" ? <p role="status">Connecting securely…</p> : <>
       <p>{authError || "Sign in to access your organisation's accounts and journal."}</p>
       {status === "failed" ? <button className="primary" onClick={() => window.location.reload()}>Retry connection</button>
@@ -48,17 +47,17 @@ export default function App() {
     setStatus("signed-out");
     try { await signOut(); } catch { setAuthError("Sign-out could not finish. Close this tab or retry sign-in."); }
   };
-  return <SearchContext.Provider value={search}><div className="app">
+  return <SearchContext.Provider value={search}><a className="skip-link" href="#main-content">Skip to content</a><div className="app">
     <aside className={mobile ? "sidebar open" : "sidebar"}>
       <div className="brand"><i><Landmark/></i><div><strong>ClearLedger</strong><small>Payments workspace</small></div><button aria-label="Close navigation" onClick={() => setMobile(false)}><X/></button></div>
-      <div className="workspace"><span>YOUR ORGANISATION</span><div className="workspace-identity"><strong>{user.tenant}</strong><small>{DEMO_MODE ? "Browser demo" : user.canWrite ? "Operator access" : "Read-only access"}</small></div></div>
+      <div className="workspace"><span>Organisation</span><div className="workspace-identity"><strong>{user.tenant}</strong><small>{DEMO_MODE ? "Browser demo" : user.canWrite ? "Operator access" : "Read-only access"}</small></div></div>
       <nav aria-label="Main navigation">{nav.map(([to, label, Icon]) => <NavLink key={to} to={to} onClick={() => setMobile(false)}><Icon/><span>{label}</span></NavLink>)}</nav>
       <div className="sidebar-spacer"/>
       <div className="rail-status"><p>{DEMO_MODE ? "Sample data · resets on refresh" : "Authenticated API connection"}</p></div>
       <nav className="secondary"><a href={DEMO_MODE ? "https://github.com/Mohamedajab/clearledger" : API_URL + "/docs"} target="_blank" rel="noreferrer"><CircleHelp/>{DEMO_MODE ? "Source and API guide" : "API documentation"}<ExternalLink/></a></nav>
       <div className="user"><b>{user.username.slice(0, 2).toUpperCase()}</b><div><strong>{user.username}</strong><small>{user.canWrite ? "Operator" : "Reader"}</small></div>{!DEMO_MODE && <button className="logout-button" aria-label="Sign out" onClick={() => void logout()}><LogOut size={16}/></button>}</div>
     </aside>
-    <main><Topbar search={search} setSearch={setSearch} onMenu={() => setMobile(true)}/>
+    <main id="main-content"><Topbar search={search} setSearch={setSearch} onMenu={() => setMobile(true)}/>
       {DEMO_MODE && <div className="demo-banner"><ShieldCheck/>Interactive browser demo with sample data. No server payments are made.</div>}
       <Routes>
         <Route path="/overview" element={<Overview/>}/><Route path="/payments" element={<Payments/>}/>
@@ -72,12 +71,12 @@ function Topbar({ search, setSearch, onMenu }: { search: string; setSearch: (val
   const location = useLocation();
   return <header className="topbar"><button className="menu" aria-label="Open navigation" onClick={onMenu}><Menu/></button>
     <div><small>{identity().tenant}</small><strong>{nav.find(([to]) => to === location.pathname)?.[1] ?? "Overview"}</strong></div>
-    <label className="search"><Search/><input aria-label="Search records" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search references, accounts or entries…"/>{search && <button aria-label="Clear search" onClick={() => setSearch("")}><X size={14}/></button>}</label>
+    <label className="search"><Search aria-hidden="true"/><input aria-label="Search records" name="search" autoComplete="off" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search records…"/>{search && <button aria-label="Clear search" onClick={() => setSearch("")}><X size={14}/></button>}</label>
     <span className="env">{DEMO_MODE ? "Demo" : identity().canWrite ? "Operator" : "Read only"}</span>
   </header>;
 }
-function Page({ title, eyebrow, copy, action, children }: { title: string; eyebrow: string; copy: string; action?: ReactNode; children: ReactNode }) {
-  return <div className="page"><header className="pagehead"><div><p>{eyebrow}</p><h1>{title}</h1><span>{copy}</span></div>{action}</header>{children}</div>;
+function Page({ title, copy, action, children }: { title: string; copy: string; action?: ReactNode; children: ReactNode }) {
+  return <div className="page"><header className="pagehead"><div><h1>{title}</h1><p>{copy}</p></div>{action}</header>{children}</div>;
 }
 function QueryState({ query, label }: { query: { isPending: boolean; error: Error | null; refetch: () => unknown }; label: string }) {
   if (query.isPending) return <div className="empty-state" role="status">Loading {label}…</div>;
@@ -92,7 +91,8 @@ function Overview() {
   const ledger = useLedger();
   const data = dashboard.data;
   const canWrite = identity().canWrite;
-  return <Page eyebrow="Payments and treasury" title="Overview" copy="Balances and activity from your organisation's ledger." action={<NavLink className="primary" to="/payments">{canWrite ? "Create payment" : "View payments"}<ArrowUpRight/></NavLink>}>
+  const balanced = ledger.data?.every(entry => entry.postings.reduce((balance, posting) => balance + (posting.direction === "DEBIT" ? posting.amountMinor : -posting.amountMinor), 0) === 0);
+  return <Page title="Overview" copy="Account balances, recent transfers and their journal entries." action={<NavLink className="primary" to="/payments">{canWrite ? "Create payment" : "View payments"}</NavLink>}>
     <QueryState query={dashboard} label="summary"/>
     {data && <section className="metrics">
       <Metric label="Total balance" value={accounts.data && new Set(accounts.data.map(a => a.currency)).size > 1 ? "Multiple currencies" : money(data.totalBalanceMinor, accounts.data?.[0]?.currency ?? "GBP")} sub="Current account projections"/>
@@ -102,24 +102,25 @@ function Overview() {
     </section>}
     {data && <p className="muted">Summary updated {date(data.asOf)}. Payment and journal lists show up to the latest 100 records.</p>}
     <QueryState query={accounts} label="accounts"/><QueryState query={ledger} label="journal"/>
-    {ledger.data && <article className="panel integrity"><h2>Loaded journal entries</h2><p>{ledger.data.length} entries · {ledger.data.reduce((sum, entry) => sum + entry.postings.length, 0)} postings</p><p>{ledger.data.every(entry => entry.postings.reduce((balance, posting) => balance + (posting.direction === "DEBIT" ? posting.amountMinor : -posting.amountMinor), 0) === 0) ? "All loaded entries are balanced." : "An unbalanced entry needs investigation."}</p><NavLink to="/ledger">Inspect the journal →</NavLink></article>}
+    {ledger.data && <article className={balanced ? "integrity" : "integrity error"} role={balanced ? undefined : "alert"}><ShieldCheck aria-hidden="true"/><div><h2>Journal check</h2><p>{balanced ? "All loaded entries are balanced." : "An unbalanced entry needs investigation."} <span>{ledger.data.length} {ledger.data.length === 1 ? "entry" : "entries"}, {ledger.data.reduce((sum, entry) => sum + entry.postings.length, 0)} postings.</span></p></div><NavLink to="/ledger">Inspect journal</NavLink></article>}
     <QueryState query={payments} label="payments"/>
     {payments.data && <PaymentTable items={payments.data.slice(0, 8)} accounts={accounts.data ?? []}/>}
   </Page>;
 }
-function Metric({ label, value, sub }: { label: string; value: string; sub: string }) { return <article className="metric"><header><i><Activity/></i><span>{label}</span></header><strong>{value}</strong><footer><span>{sub}</span></footer></article>; }
+function Metric({ label, value, sub }: { label: string; value: string; sub: string }) { return <article className="metric"><h2>{label}</h2><strong>{value}</strong><p>{sub}</p></article>; }
 function PaymentTable({ items, accounts }: { items: Payment[]; accounts: { id: string; name: string }[] }) {
   const search = useContext(SearchContext);
   const names = Object.fromEntries(accounts.map(account => [account.id, account.name]));
   const filtered = items.filter(payment => matches(search, payment.merchantReference, payment.id, names[payment.sourceAccountId] ?? "", names[payment.destinationAccountId] ?? ""));
-  return <article className="panel tablepanel"><h2>Payments</h2><p className="muted" role="status">{filtered.length} shown</p>
-    {filtered.length === 0 ? <Empty>{search ? "No payments match your search." : "No payments yet."}</Empty> : <div className="table" role="table" aria-label="Payments">
-      <div className="tr th" role="row"><span role="columnheader">Reference</span><span role="columnheader">Route</span><span role="columnheader">Amount</span><span role="columnheader">Status</span><span role="columnheader">Created</span></div>
-      {filtered.map(payment => <div className="tr" role="row" key={payment.id}>
-        <span role="cell"><b>{payment.merchantReference}<small>PAY_{short(payment.id)}</small></b></span>
-        <span role="cell">{names[payment.sourceAccountId] ?? short(payment.sourceAccountId)}<small>→ {names[payment.destinationAccountId] ?? short(payment.destinationAccountId)}</small></span>
-        <strong role="cell">{money(payment.amountMinor, payment.currency)}</strong><em role="cell"><Check/>{payment.status.toLowerCase()}</em><time role="cell">{date(payment.createdAt)}</time>
-      </div>)}
+  return <article className="panel tablepanel"><header className="table-heading"><h2>Payments</h2><p className="muted" role="status">{filtered.length} shown</p></header>
+    {filtered.length === 0 ? <Empty>{search ? "No payments match your search." : "No payments yet."}</Empty> : <div className="table-scroll" tabIndex={0} role="region" aria-label="Payment records">
+      <table aria-label="Payments"><thead><tr><th scope="col">Reference</th><th scope="col">From / to</th><th scope="col" className="amount-cell">Amount</th><th scope="col">Status</th><th scope="col">Created</th></tr></thead><tbody>
+      {filtered.map(payment => <tr key={payment.id}>
+        <td><b>{payment.merchantReference}</b><small>PAY_{short(payment.id)}</small></td>
+        <td>{names[payment.sourceAccountId] ?? short(payment.sourceAccountId)}<small>to {names[payment.destinationAccountId] ?? short(payment.destinationAccountId)}</small></td>
+        <td className="amount-cell"><strong>{money(payment.amountMinor, payment.currency)}</strong></td><td><span className="payment-status"><Check aria-hidden="true"/>{payment.status.toLowerCase()}</span></td><td><time>{date(payment.createdAt)}</time></td>
+      </tr>)}
+      </tbody></table>
     </div>}
   </article>;
 }
@@ -127,7 +128,7 @@ function Payments() {
   const query = usePayments();
   const accounts = useAccounts();
   const [open, setOpen] = useState(false);
-  return <Page eyebrow="Payment orchestration" title="Payments" copy="Transfers committed with their balance changes and journal postings." action={identity().canWrite ? <button className="primary" onClick={() => setOpen(true)}>Create payment<ArrowUpRight/></button> : undefined}>
+  return <Page title="Payments" copy="Transfers committed with their balance changes and journal postings." action={identity().canWrite ? <button className="primary" onClick={() => setOpen(true)}>Create payment</button> : undefined}>
     {!identity().canWrite && <p className="demo-banner">You have read-only access. An operator can create payments.</p>}
     <QueryState query={query} label="payments"/><QueryState query={accounts} label="accounts"/>
     {query.data && accounts.data && <PaymentTable items={query.data} accounts={accounts.data}/>}
@@ -171,10 +172,10 @@ function PaymentModal({ close }: { close: () => void }) {
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
   };
   return <div className="overlay"><div className="dialog" role="dialog" aria-modal="true" aria-labelledby="payment-title" tabIndex={-1} ref={dialog} onKeyDown={trapFocus}>
-    <header><div><p>ACCOUNT TRANSFER</p><h2 id="payment-title">Create a payment</h2></div><button disabled={mutation.isPending} aria-label="Close payment form" onClick={close}><X/></button></header>
+    <header><div><h2 id="payment-title">Create a payment</h2><p>Transfer between two GBP accounts.</p></div><button disabled={mutation.isPending} aria-label="Close payment form" onClick={close}><X/></button></header>
     <QueryState query={accounts} label="accounts"/>
     {accounts.data && <form onSubmit={submit}><fieldset disabled={mutation.isPending}>
-      <label>Reference<input name="reference" required maxLength={96} placeholder="ORD-88422"/></label>
+      <label>Reference<input name="reference" autoComplete="off" spellCheck={false} required maxLength={96} placeholder="ORD-88422"/></label>
       <div className="twocol"><label>From account<select name="source" required defaultValue={accounts.data[0]?.id}>{accounts.data.filter(a => a.currency === "GBP" && a.status === "ACTIVE").map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
       <label>To account<select name="destination" required defaultValue={accounts.data[1]?.id}>{accounts.data.filter(a => a.currency === "GBP" && a.status === "ACTIVE").map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label></div>
       <label>Amount (GBP)<input name="amount" inputMode="decimal" pattern="[0-9]+([.][0-9]{1,2})?" required placeholder="125.00"/></label>
@@ -189,7 +190,7 @@ function Accounts() {
   const query = useAccounts();
   const search = useContext(SearchContext);
   const items = query.data?.filter(a => matches(search, a.name, a.externalRef, a.id)) ?? [];
-  return <Page eyebrow="Treasury and merchants" title="Accounts" copy="Balance projections backed by journal postings.">
+  return <Page title="Accounts" copy="Balance projections backed by journal postings.">
     <QueryState query={query} label="accounts"/>
     {query.data && (items.length ? <section className="account-grid">{items.map(a => <article className="account" key={a.id}><header><i><Landmark/></i><em>{a.status.toLowerCase()}</em></header><p>{a.type}</p><h2>{a.name}</h2><strong>{money(a.balanceMinor, a.currency)}</strong><footer><span>{a.externalRef}</span><b>v{a.version}</b></footer></article>)}</section> : <Empty>{search ? "No accounts match your search." : "No accounts are available."}</Empty>)}
   </Page>;
@@ -201,7 +202,7 @@ function Ledger() {
   const names = Object.fromEntries((accounts.data ?? []).map(a => [a.id, a.name]));
   const items = query.data?.filter(entry => matches(search, entry.reference, entry.description, ...entry.postings.map(p => names[p.accountId] ?? p.accountId))) ?? [];
   const exportJournal = () => downloadCsv("clearledger-journal.csv", ["entry_id", "reference", "occurred_at", "account_id", "direction", "amount_minor", "currency"], items.flatMap(entry => entry.postings.map(p => [entry.id, entry.reference, entry.occurredAt, p.accountId, p.direction, p.amountMinor, p.currency])));
-  return <Page eyebrow="Double-entry journal" title="Ledger" copy="Inspect or export the loaded journal records, up to the latest 100 entries." action={<button className="primary" disabled={!items.length} onClick={exportJournal}><Download/>Export journal</button>}>
+  return <Page title="Ledger" copy="Inspect or export the loaded journal records, up to the latest 100 entries." action={<button className="primary" disabled={!items.length} onClick={exportJournal}><Download aria-hidden="true"/>Export journal</button>}>
     <QueryState query={query} label="journal"/><QueryState query={accounts} label="accounts"/>
     {query.data && (items.length ? <section className="entries">{items.map(entry => <LedgerRow key={entry.id} entry={entry} names={names}/>)}</section> : <Empty>{search ? "No journal entries match your search." : "No journal entries yet."}</Empty>)}
   </Page>;
@@ -216,8 +217,8 @@ function Developers() {
   const [message, setMessage] = useState("");
   const endpoints = [["POST", "/api/v1/payments", "Create a transfer (write access)"], ["GET", "/api/v1/payments", "Latest payments"], ["GET", "/api/v1/accounts", "Account balances"], ["GET", "/api/v1/ledger/entries", "Latest journal entries"]];
   const copy = async (text: string) => { try { await navigator.clipboard.writeText(text); setMessage("Copied."); } catch { setMessage("Clipboard is unavailable. Select and copy the text."); } };
-  const example = "curl " + (API_URL || window.location.origin) + "/api/v1/accounts -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'";
-  return <Page eyebrow="Integration surface" title="Developers" copy="Authenticated REST endpoints scoped to your verified tenant.">
+  const example = "curl " + (API_URL || (DEMO_MODE ? "http://localhost:8080" : window.location.origin)) + "/api/v1/accounts -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'";
+  return <Page title="Developers" copy={DEMO_MODE ? "API reference for the local Java service. These endpoints are not hosted by the browser demo." : "Authenticated REST endpoints scoped to your verified tenant."}>
     <div role="status">{message}</div><section className="dev-grid"><article className="panel endpoints"><h2>REST API</h2>{endpoints.map(([method, path, description]) => <div key={path + method}><b>{method}</b><code>{path}</code><span>{description}</span><button aria-label={"Copy " + method + " " + path} onClick={() => void copy(path)}><Copy/></button></div>)}</article>
       <article className="panel code"><header><span>cURL</span><button onClick={() => void copy(example)}><Copy/>Copy example</button></header><pre>{example}</pre></article></section>
     <section className="contract-grid"><article><ShieldCheck/><h3>Verified identity</h3><p>Issuer, audience and tenant claims are validated. Client-supplied tenant headers do not select your organisation.</p></article><article><Database/><h3>Atomic transfers</h3><p>Balances, postings, payment records and outbox events commit together.</p></article><article><CreditCard/><h3>Safe retries</h3><p>Reuse the same Idempotency-Key for an unchanged transfer.</p></article></section>

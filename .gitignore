@@ -21,3 +21,7 @@ Thumbs.db
 /work/
 /.data/
 /apps/control-plane/src/assets/
+
+# Local hosting tools
+.wrangler/
+.dry-run/

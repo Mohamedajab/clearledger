@@ -36,8 +36,12 @@ class PaymentApiIntegrationTest {
     private static PostgreSQLContainer postgres;
 
     static boolean postgresAvailable() {
-        return System.getenv("LEDGER_TEST_DATABASE_URL") != null
+        boolean available = System.getenv("LEDGER_TEST_DATABASE_URL") != null
             || DockerClientFactory.instance().isDockerAvailable();
+        if (!available && "true".equals(System.getenv("CI"))) {
+            throw new IllegalStateException("CI requires a real PostgreSQL test database");
+        }
+        return available;
     }
 
     @DynamicPropertySource

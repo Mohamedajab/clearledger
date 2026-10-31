@@ -9,7 +9,9 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "build:demo": "tsc -b && vite build --mode demo",
+    "test:demo": "playwright test --config playwright.demo.config.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.104.0",
